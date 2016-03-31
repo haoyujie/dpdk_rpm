@@ -1,7 +1,8 @@
-diff -up dpdk-1.8.0/lib/librte_pmd_i40e/Makefile.i40e-wformat dpdk-1.8.0/lib/librte_pmd_i40e/Makefile
---- dpdk-1.8.0/lib/librte_pmd_i40e/Makefile.i40e-wformat	2015-01-29 13:50:02.378411649 +0200
-+++ dpdk-1.8.0/lib/librte_pmd_i40e/Makefile	2015-01-29 13:50:11.117389706 +0200
-@@ -50,7 +50,6 @@ CFLAGS_BASE_DRIVER += -Wno-sign-compare
+diff --git a/drivers/net/i40e/Makefile b/drivers/net/i40e/Makefile
+index 033ee4a..3917b0c 100644
+--- a/drivers/net/i40e/Makefile
++++ b/drivers/net/i40e/Makefile
+@@ -55,7 +55,6 @@ CFLAGS_BASE_DRIVER += -Wno-sign-compare
  CFLAGS_BASE_DRIVER += -Wno-unused-value
  CFLAGS_BASE_DRIVER += -Wno-unused-parameter
  CFLAGS_BASE_DRIVER += -Wno-strict-aliasing
@@ -9,7 +10,7 @@ diff -up dpdk-1.8.0/lib/librte_pmd_i40e/Makefile.i40e-wformat dpdk-1.8.0/lib/lib
  CFLAGS_BASE_DRIVER += -Wno-missing-field-initializers
  CFLAGS_BASE_DRIVER += -Wno-pointer-to-int-cast
  CFLAGS_BASE_DRIVER += -Wno-format-nonliteral
-@@ -59,11 +58,9 @@ CFLAGS_BASE_DRIVER  = -Wno-sign-compare
+@@ -65,11 +64,9 @@ CFLAGS_BASE_DRIVER  = -Wno-sign-compare
  CFLAGS_BASE_DRIVER += -Wno-unused-value
  CFLAGS_BASE_DRIVER += -Wno-unused-parameter
  CFLAGS_BASE_DRIVER += -Wno-strict-aliasing
@@ -18,6 +19,6 @@ diff -up dpdk-1.8.0/lib/librte_pmd_i40e/Makefile.i40e-wformat dpdk-1.8.0/lib/lib
  CFLAGS_BASE_DRIVER += -Wno-pointer-to-int-cast
  CFLAGS_BASE_DRIVER += -Wno-format-nonliteral
 -CFLAGS_BASE_DRIVER += -Wno-format-security
+ CFLAGS_BASE_DRIVER += -Wno-unused-variable
  
  ifeq ($(shell test $(GCC_VERSION) -ge 44 && echo 1), 1)
- CFLAGS_BASE_DRIVER += -Wno-unused-but-set-variable

@@ -4,16 +4,19 @@
 %bcond_with examples
 # Add option to build without tools
 %bcond_without tools
-# Add option to build with IVSHMEM support (breaks ABI and whatnot, watchout)
-%bcond_with ivshmem
+# Add option to build without driverctl
+%bcond_without driverctl
 
 # Dont edit Version: and Release: directly, only these:
-%define ver 2.0.0
-%define rel 8
+%define ver 2.2.0
+# NOTE: due to driverctl having its own version, only reset release
+# to 1 when *both* dpdk and driverctl are updated.
+%define rel 2
 # Define when building git snapshots
 #define snapver 2086.git263333bb
 
 %define srcver %{ver}%{?snapver:-%{snapver}}
+%define dctlver 0.59
 
 Name: dpdk
 Version: %{ver}
@@ -24,10 +27,9 @@ Source: http://dpdk.org/browse/dpdk/snapshot/dpdk-%{srcver}.tar.gz
 # Only needed for creating snapshot tarballs, not used in build itself
 Source100: dpdk-snapshot.sh
 
-Patch2: dpdk-i40e-wformat.patch
-Patch4: dpdk-dtneeded.patch
-Patch5: dpdk-dev-vhost-flush-used--idx-update-before-reading-avail--flags.patch
-Patch6: dpdk-dev-vfio-eventfd-should-be-non-block-and-not-inherited.patch
+Patch1: dpdk-2.2-warningflags.patch
+Patch2: dpdk-2.2-dtneeded.patch
+Patch3: dpdk-2.2-buildopts.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -45,10 +47,14 @@ License: BSD and LGPLv2 and GPLv2
 ExclusiveArch: x86_64 
 
 %define machine native
-
 %define target x86_64-%{machine}-linuxapp-gcc
 
-BuildRequires: kernel-headers, libpcap-devel
+%define sdkdir  %{_datadir}/%{name}
+%define docdir  %{_docdir}/%{name}
+%define incdir  %{_includedir}/%{name}
+%define pmddir %{_libdir}/%{name}-pmds
+
+BuildRequires: kernel-headers, libpcap-devel, zlib-devel, numactl-devel
 BuildRequires: doxygen, python-sphinx
 
 %description
@@ -76,7 +82,6 @@ API programming documentation for the Data Plane Development Kit.
 %if %{with tools}
 %package tools
 Summary: Tools for setting up Data Plane Development Kit environment
-Requires: %{name} = %{version}-%{release}
 Requires: kmod pciutils findutils iproute
 
 %description tools
@@ -93,21 +98,35 @@ Example applications utilizing the Data Plane Development Kit, such
 as L2 and L3 forwarding.
 %endif
 
-%define sdkdir  %{_libdir}/%{name}-%{version}-sdk
-%define docdir  %{_docdir}/%{name}-%{version}
+%if %{with driverctl}
+%package -n driverctl
+Version: %{dctlver}
+Summary: Driver control utility
+Requires(post,postun): systemd
+Requires: coreutils kmod
+# for udev macros
+BuildRequires: systemd
+BuildArch: noarch
+Source10: driverctl-%{dctlver}.tar.gz
+
+%description -n driverctl
+%{summary}
+
+# restore original version, sub-package specific versions are problematic...
+%undefine version
+%endif
 
 %prep
-%setup -q -n %{name}-%{srcver}
-%patch2 -p1 -z .i40e-wformat
-%patch4 -p1 -z .dtneeded
-%patch5 -p1 -z .vhost-flush
-%patch6 -p1 -z .vfio-eventfd
+%setup -q -n %{name}-%{srcver} %{?with_driverctl:-a 10}
+%patch1 -p1 -z .warningflags
+%patch2 -p1 -z .dtneeded
+%patch3 -p1 -z .buildopts
 
 %build
 function setconf()
 {
     cf=%{target}/.config
-    if grep -q $1 $cf; then
+    if grep -q ^$1= $cf; then
         sed -i "s:^$1=.*$:$1=$2:g" $cf
     else
         echo $1=$2 >> $cf
@@ -118,27 +137,21 @@ unset RTE_SDK RTE_INCLUDE RTE_TARGET
 
 # Avoid appending second -Wall to everything, it breaks hand-picked
 # disablers like per-file -Wno-strict-aliasing
-export EXTRA_CFLAGS="`echo %{optflags} | sed -e 's:-Wall::g'` -fPIC -Wno-error=array-bounds"
-
+export EXTRA_CFLAGS="`echo %{optflags} | sed -e 's:-Wall::g'` -fPIC"
 
 make V=1 O=%{target} T=%{target} %{?_smp_mflags} config
 
 # DPDK defaults to optimizing for the builder host we need generic binaries
-setconf CONFIG_RTE_MACHINE default
+setconf CONFIG_RTE_MACHINE '"default"'
+setconf CONFIG_RTE_SCHED_VECTOR n
 
-# Enable pcap and vhost build, the added deps are ok for us
+# Enable automatic driver loading from this path
+setconf CONFIG_RTE_EAL_PMD_PATH '"%{pmddir}"'
+
+# Enable bnx2x, pcap and vhost build, the added deps are ok for us
+setconf CONFIG_RTE_LIBRTE_BNX2X_PMD y
 setconf CONFIG_RTE_LIBRTE_PMD_PCAP y
-setconf CONFIG_RTE_LIBRTE_VHOST y
-
-# If IVSHMEM enabled...
-%if %{with ivshmem}
-    setconf CONFIG_RTE_LIBRTE_IVSHMEM y
-    setconf CONFIG_RTE_LIBRTE_IVSHMEM_DEBUG n
-    setconf CONFIG_RTE_LIBRTE_IVSHMEM_MAX_PCI_DEVS 4
-    setconf CONFIG_RTE_LIBRTE_IVSHMEM_MAX_ENTRIES 128
-    setconf CONFIG_RTE_LIBRTE_IVSHMEM_MAX_METADATA_FILES 32
-    setconf CONFIG_RTE_EAL_SINGLE_FILE_SEGMENTS y
-%endif
+setconf CONFIG_RTE_LIBRTE_VHOST_NUMA y
 
 %if %{with shared}
 setconf CONFIG_RTE_BUILD_SHARED_LIB y
@@ -147,6 +160,12 @@ setconf CONFIG_RTE_BUILD_SHARED_LIB y
 # Disable kernel modules
 setconf CONFIG_RTE_EAL_IGB_UIO n
 setconf CONFIG_RTE_LIBRTE_KNI n
+setconf CONFIG_RTE_KNI_KMOD n
+
+# Disable experimental and ABI-breaking code
+setconf CONFIG_RTE_NEXT_ABI n
+setconf CONFIG_RTE_LIBRTE_CRYPTODEV n
+setconf CONFIG_RTE_LIBRTE_MBUF_OFFLOAD n
 
 make V=1 O=%{target} %{?_smp_mflags} 
 
@@ -158,37 +177,25 @@ make V=1 O=%{target}/examples T=%{target} %{?_smp_mflags} examples
 %endif
 
 %install
+# In case dpdk-devel is installed
+unset RTE_SDK RTE_INCLUDE RTE_TARGET
 
-# DPDK's "make install" seems a bit broken -- do things manually...
+%make_install O=%{target} prefix=%{_usr} libdir=%{_libdir}
 
-mkdir -p                     %{buildroot}%{_bindir}
-cp -a  %{target}/app/testpmd %{buildroot}%{_bindir}/testpmd
-mkdir -p                     %{buildroot}%{_includedir}/%{name}-%{version}
-cp -Lr  %{target}/include/*   %{buildroot}%{_includedir}/%{name}-%{version}
-mkdir -p                     %{buildroot}%{_libdir}
-cp -a  %{target}/lib/*       %{buildroot}%{_libdir}
-mkdir -p                     %{buildroot}%{docdir}
-cp -a  %{target}/doc/*       %{buildroot}%{docdir}
-
+# Create a driver directory with symlinks to all pmds
+mkdir -p %{buildroot}/%{pmddir}
 %if %{with shared}
-libext=so
-%else
-libext=a
+for f in %{buildroot}/%{_libdir}/*_pmd_*.so.*; do
+    bn=$(basename ${f})
+    ln -s ../${bn} %{buildroot}%{pmddir}/${bn}
+done
 %endif
 
-# DPDK apps expect a particular (and somewhat peculiar) directory layout
-# for building, arrange for that
-mkdir -p                     %{buildroot}%{sdkdir}/lib
-mkdir -p                     %{buildroot}%{sdkdir}/%{target}
-cp -a  %{target}/.config     %{buildroot}%{sdkdir}/%{target}
-ln -s  ../../../include/%{name}-%{version} %{buildroot}%{sdkdir}/%{target}/include
-cp -a  mk/                   %{buildroot}%{sdkdir}
-mkdir -p                     %{buildroot}%{sdkdir}/scripts
-cp -a  scripts/*.sh          %{buildroot}%{sdkdir}/scripts
-
-%if %{with tools}
-cp -p  tools/*.py            %{buildroot}%{_bindir}
+%if ! %{with tools}
+rm -rf %{buildroot}%{sdkdir}/tools
+rm -rf %{buildroot}%{_sbindir}/dpdk_nic_bind
 %endif
+rm -f %{buildroot}%{sdkdir}/tools/setup.sh
 
 %if %{with examples}
 find %{target}/examples/ -name "*.map" | xargs rm -f
@@ -196,13 +203,9 @@ for f in %{target}/examples/*/%{target}/app/*; do
     bn=`basename ${f}`
     cp -p ${f} %{buildroot}%{_bindir}/dpdk_${bn}
 done
+%else
+rm -rf %{buildroot}%{sdkdir}/examples
 %endif
-
-# Create library symlinks for the "sdk"
-for f in %{buildroot}/%{_libdir}/*.${libext}; do
-    l=`basename ${f}`
-    ln -s ../../${l} %{buildroot}/%{sdkdir}/lib/${l}
-done
 
 # Setup RTE_SDK environment as expected by apps etc
 mkdir -p %{buildroot}/%{_sysconfdir}/profile.d
@@ -210,7 +213,7 @@ cat << EOF > %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk-%{_arch}.sh
 if [ -z "\${RTE_SDK}" ]; then
     export RTE_SDK="%{sdkdir}"
     export RTE_TARGET="%{target}"
-    export RTE_INCLUDE="%{_includedir}/%{name}-%{version}"
+    export RTE_INCLUDE="%{incdir}"
 fi
 EOF
 
@@ -218,19 +221,24 @@ cat << EOF > %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk-%{_arch}.csh
 if ( ! \$RTE_SDK ) then
     setenv RTE_SDK "%{sdkdir}"
     setenv RTE_TARGET "%{target}"
-    setenv RTE_INCLUDE "%{_includedir}/%{name}-%{version}"
+    setenv RTE_INCLUDE "%{incdir}"
 endif
 EOF
 
-# Fixup irregular modes in headers
-find %{buildroot}%{_includedir}/%{name}-%{version} -type f | xargs chmod 0644
+# Fixup target machine mismatch
+sed -i -e 's:-%{machine}-:-default-:g' %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk*
 
 # Upstream has an option to build a combined library but it's bloatware which
 # wont work at all when library versions start moving, replace it with a 
 # linker script which avoids these issues. Linking against the script during
 # build resolves into links to the actual used libraries which is just fine
 # for us, so this combined library is a build-time only construct now.
-comblib=libintel_dpdk.${libext}
+%if %{with shared}
+libext=so
+%else
+libext=a
+%endif
+comblib=libdpdk.${libext}
 
 echo "GROUP (" > ${comblib}
 find %{buildroot}/%{_libdir}/ -maxdepth 1 -name "*.${libext}" |\
@@ -238,12 +246,21 @@ find %{buildroot}/%{_libdir}/ -maxdepth 1 -name "*.${libext}" |\
 echo ")" >> ${comblib}
 install -m 644 ${comblib} %{buildroot}/%{_libdir}/${comblib}
 
+%if %{with driverctl}
+cd driverctl-%{dctlver}
+make install DESTDIR=%{buildroot}
+cd -
+%endif
+
 %files
 # BSD
+%doc README MAINTAINERS
 %{_bindir}/testpmd
+%{_bindir}/dpdk_proc_info
+%dir %{pmddir}
 %if %{with shared}
 %{_libdir}/*.so.*
-%{_libdir}/*_pmd_*.so
+%{pmddir}/*.so.*
 %endif
 
 %files doc
@@ -252,28 +269,92 @@ install -m 644 ${comblib} %{buildroot}/%{_libdir}/${comblib}
 
 %files devel
 #BSD
-%{_includedir}/*
-%{sdkdir}
+%{incdir}/
+%{sdkdir}/
+%if %{with tools}
+%exclude %{sdkdir}/tools/
+%endif
+%if %{with examples}
+%exclude %{sdkdir}/examples/
+%endif
 %{_sysconfdir}/profile.d/dpdk-sdk-*.*
 %if %{with shared}
 %{_libdir}/*.so
-%exclude %{_libdir}/*_pmd_*.so
 %else
 %{_libdir}/*.a
 %endif
-
 %if %{with examples}
 %files examples
+%exclude %{_bindir}/dpdk_proc_info
 %{_bindir}/dpdk_*
-%exclude %{_bindir}/*.py
+%doc %{sdkdir}/examples/
 %endif
 
 %if %{with tools}
 %files tools
-%{_bindir}/*.py
+%{sdkdir}/tools/
+%{_sbindir}/dpdk_nic_bind
+%endif
+
+%if %{with driverctl}
+%post -n driverctl
+%udev_rules_update
+
+%postun -n driverctl
+%udev_rules_update
+
+%files -n driverctl
+%{_sbindir}/driverctl
+/usr/lib/udev/rules.d/*.rules
+/usr/lib/udev/vfio_name
+%dir %{_sysconfdir}/driverctl.d
+%{_sysconfdir}/bash-completion.d/driverctl-bash-completion.sh
+%{_mandir}/man8/driverctl.8*
 %endif
 
 %changelog
+* Wed Jan 27 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-2
+- Use a different quoting method to avoid messing up vim syntax highlighting
+- A string is expected as CONFIG_RTE_MACHINE value, quote it too
+- Enable librte_vhost NUMA-awareness
+
+* Tue Jan 12 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-1
+- Update DPDK to 2.2.0 final
+- Add README and MAINTAINERS docs
+- Adopt new upstream standard installation layout, including
+  dpdk_nic_bind.py renamed to dpdk_nic_bind
+- Move the unversioned pmd symlinks from libdir -devel
+- Establish a driver directory for automatic driver loading
+- Disable CONFIG_RTE_SCHED_VECTOR, it conflicts with CONFIG_RTE_MACHINE default
+- Disable experimental cryptodev library
+- More complete dtneeded patch
+- Make option matching stricter in spec setconf
+- Update driverctl to 0.59
+
+* Wed Dec 09 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-5
+- Fix artifacts from driverctl having different version
+- Update driverctl to 0.58
+
+* Fri Nov 13 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-4
+- Add driverctl sub-package
+
+* Fri Oct 23 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-3
+- Enable bnx2x pmd, which buildrequires zlib-devel
+
+* Mon Sep 28 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-2
+- Make lib and include available both ways in the SDK paths
+
+* Thu Sep 24 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-1
+- Update to dpdk 2.1.0 final
+  - Disable ABI_NEXT
+  - Rebase patches as necessary
+  - Fix build of ip_pipeline example
+  - Drop no longer needed -Wno-error=array-bounds
+  - Rename libintel_dpdk to libdpdk
+
+* Tue Aug 11 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-9
+- Drop main package dependency from dpdk-tools
+
 * Wed May 20 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-8
 - Drop eventfd-link patch, its only needed for vhost-cuse
 
