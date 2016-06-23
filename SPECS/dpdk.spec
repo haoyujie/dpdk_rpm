@@ -11,7 +11,7 @@
 %define ver 2.2.0
 # NOTE: due to driverctl having its own version, only reset release
 # to 1 when *both* dpdk and driverctl are updated.
-%define rel 2
+%define rel 3
 # Define when building git snapshots
 #define snapver 2086.git263333bb
 
@@ -151,7 +151,8 @@ setconf CONFIG_RTE_EAL_PMD_PATH '"%{pmddir}"'
 # Enable bnx2x, pcap and vhost build, the added deps are ok for us
 setconf CONFIG_RTE_LIBRTE_BNX2X_PMD y
 setconf CONFIG_RTE_LIBRTE_PMD_PCAP y
-setconf CONFIG_RTE_LIBRTE_VHOST_NUMA y
+# Disabled for now, causes segfaults
+setconf CONFIG_RTE_LIBRTE_VHOST_NUMA n
 
 %if %{with shared}
 setconf CONFIG_RTE_BUILD_SHARED_LIB y
@@ -313,6 +314,9 @@ cd -
 %endif
 
 %changelog
+* Wed Mar 16 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-3
+- Disable librte_vhost NUMA support for now, it causes segfaults
+
 * Wed Jan 27 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-2
 - Use a different quoting method to avoid messing up vim syntax highlighting
 - A string is expected as CONFIG_RTE_MACHINE value, quote it too
