@@ -4,32 +4,29 @@
 %bcond_with examples
 # Add option to build without tools
 %bcond_without tools
-# Add option to build without driverctl
-%bcond_without driverctl
 
 # Dont edit Version: and Release: directly, only these:
-%define ver 2.2.0
-# NOTE: due to driverctl having its own version, only reset release
-# to 1 when *both* dpdk and driverctl are updated.
-%define rel 3
+%define ver 16.11.2
+%define rel 4
+
+%define srcname dpdk-stable
 # Define when building git snapshots
 #define snapver 2086.git263333bb
 
 %define srcver %{ver}%{?snapver:-%{snapver}}
-%define dctlver 0.59
 
 Name: dpdk
 Version: %{ver}
 Release: %{?snapver:0.%{snapver}.}%{rel}%{?dist}
 URL: http://dpdk.org
-Source: http://dpdk.org/browse/dpdk/snapshot/dpdk-%{srcver}.tar.gz
+Source: http://dpdk.org/browse/%{srcname}/snapshot/%{srcname}-%{srcver}.tar.xz
+Patch0: mk-move-PMD-libraries-linking-to-applications.patch
+Patch1: net-i40e-implement-vector-PMD-for-altivec.patch
+Patch2: eal-ppc-support-sPAPR-IOMMU-for-vfio-pci.patch
+Patch3: eal-ppc-fix-mmap-for-memory-initialization.patch
 
 # Only needed for creating snapshot tarballs, not used in build itself
 Source100: dpdk-snapshot.sh
-
-Patch1: dpdk-2.2-warningflags.patch
-Patch2: dpdk-2.2-dtneeded.patch
-Patch3: dpdk-2.2-buildopts.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -42,12 +39,35 @@ License: BSD and LGPLv2 and GPLv2
 
 #
 # The DPDK is designed to optimize througput of network traffic using, among
-# other techniques, carefully crafted x86 assembly instructions.  As such it
-# currently (and likely never will) run on non-x86 platforms. 
-ExclusiveArch: x86_64 
+# other techniques, carefully crafted assembly instructions.  As such it
+# needs extensive work to port it to other architectures.
+ExclusiveArch: x86_64 i686 aarch64 ppc64le
 
-%define machine native
-%define target x86_64-%{machine}-linuxapp-gcc
+# machine_arch maps between rpm and dpdk arch name, often same as _target_cpu
+# machine_tmpl is the config template machine name, often "native"
+# machine is the actual machine name used in the dpdk make system
+%ifarch x86_64
+%define machine_arch x86_64
+%define machine_tmpl native
+%define machine default
+%endif
+%ifarch i686
+%define machine_arch i686
+%define machine_tmpl native
+%define machine atm
+%endif
+%ifarch aarch64
+%define machine_arch arm64
+%define machine_tmpl armv8a
+%define machine armv8a
+%endif
+%ifarch ppc64le
+%define machine_arch ppc_64
+%define machine_tmpl power8
+%define machine power8
+%endif
+
+%define target %{machine_arch}-%{machine_tmpl}-linuxapp-gcc
 
 %define sdkdir  %{_datadir}/%{name}
 %define docdir  %{_docdir}/%{name}
@@ -98,29 +118,12 @@ Example applications utilizing the Data Plane Development Kit, such
 as L2 and L3 forwarding.
 %endif
 
-%if %{with driverctl}
-%package -n driverctl
-Version: %{dctlver}
-Summary: Driver control utility
-Requires(post,postun): systemd
-Requires: coreutils kmod
-# for udev macros
-BuildRequires: systemd
-BuildArch: noarch
-Source10: driverctl-%{dctlver}.tar.gz
-
-%description -n driverctl
-%{summary}
-
-# restore original version, sub-package specific versions are problematic...
-%undefine version
-%endif
-
 %prep
-%setup -q -n %{name}-%{srcver} %{?with_driverctl:-a 10}
-%patch1 -p1 -z .warningflags
-%patch2 -p1 -z .dtneeded
-%patch3 -p1 -z .buildopts
+%setup -q -n %{srcname}-%{srcver}
+%patch0 -p1
+%patch1 -p1
+%patch2 -p1
+%patch3 -p1
 
 %build
 function setconf()
@@ -135,24 +138,29 @@ function setconf()
 # In case dpdk-devel is installed
 unset RTE_SDK RTE_INCLUDE RTE_TARGET
 
-# Avoid appending second -Wall to everything, it breaks hand-picked
-# disablers like per-file -Wno-strict-aliasing
-export EXTRA_CFLAGS="`echo %{optflags} | sed -e 's:-Wall::g'` -fPIC"
+# Avoid appending second -Wall to everything, it breaks upstream warning
+# disablers in makefiles. Strip expclit -march= from optflags since they
+# will only guarantee build failures, DPDK is picky with that.
+export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:alnum:]]* ::g') -Wformat -fPIC"
+
+# DPDK defaults to using builder-specific compiler flags.  However,
+# the config has been changed by specifying CONFIG_RTE_MACHINE=default
+# in order to build for a more generic host.  NOTE: It is possible that
+# the compiler flags used still won't work for all Fedora-supported
+# machines, but runtime checks in DPDK will catch those situations.
 
 make V=1 O=%{target} T=%{target} %{?_smp_mflags} config
 
-# DPDK defaults to optimizing for the builder host we need generic binaries
-setconf CONFIG_RTE_MACHINE '"default"'
-setconf CONFIG_RTE_SCHED_VECTOR n
+setconf CONFIG_RTE_MACHINE '"%{machine}"'
 
 # Enable automatic driver loading from this path
 setconf CONFIG_RTE_EAL_PMD_PATH '"%{pmddir}"'
 
-# Enable bnx2x, pcap and vhost build, the added deps are ok for us
-setconf CONFIG_RTE_LIBRTE_BNX2X_PMD y
+# Enable pcap and vhost-numa build, the added deps are ok for us
 setconf CONFIG_RTE_LIBRTE_PMD_PCAP y
-# Disabled for now, causes segfaults
-setconf CONFIG_RTE_LIBRTE_VHOST_NUMA n
+setconf CONFIG_RTE_LIBRTE_VHOST_NUMA y
+# Disable unstable driver(s)
+setconf CONFIG_RTE_LIBRTE_BNX2X_PMD n
 
 %if %{with shared}
 setconf CONFIG_RTE_BUILD_SHARED_LIB y
@@ -165,8 +173,12 @@ setconf CONFIG_RTE_KNI_KMOD n
 
 # Disable experimental and ABI-breaking code
 setconf CONFIG_RTE_NEXT_ABI n
-setconf CONFIG_RTE_LIBRTE_CRYPTODEV n
-setconf CONFIG_RTE_LIBRTE_MBUF_OFFLOAD n
+
+# Disable some PMDs on fdProd
+setconf CONFIG_RTE_LIBRTE_BNXT_PMD n
+setconf CONFIG_RTE_LIBRTE_ENA_PMD n
+setconf CONFIG_RTE_LIBRTE_PMD_NULL_CRYPTO n
+setconf CONFIG_RTE_LIBRTE_QEDE_PMD n
 
 make V=1 O=%{target} %{?_smp_mflags} 
 
@@ -194,7 +206,7 @@ done
 
 %if ! %{with tools}
 rm -rf %{buildroot}%{sdkdir}/tools
-rm -rf %{buildroot}%{_sbindir}/dpdk_nic_bind
+rm -rf %{buildroot}%{_sbindir}/dpdk-devbind
 %endif
 rm -f %{buildroot}%{sdkdir}/tools/setup.sh
 
@@ -202,7 +214,7 @@ rm -f %{buildroot}%{sdkdir}/tools/setup.sh
 find %{target}/examples/ -name "*.map" | xargs rm -f
 for f in %{target}/examples/*/%{target}/app/*; do
     bn=`basename ${f}`
-    cp -p ${f} %{buildroot}%{_bindir}/dpdk_${bn}
+    cp -p ${f} %{buildroot}%{_bindir}/dpdk-${bn}
 done
 %else
 rm -rf %{buildroot}%{sdkdir}/examples
@@ -227,37 +239,14 @@ endif
 EOF
 
 # Fixup target machine mismatch
-sed -i -e 's:-%{machine}-:-default-:g' %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk*
-
-# Upstream has an option to build a combined library but it's bloatware which
-# wont work at all when library versions start moving, replace it with a 
-# linker script which avoids these issues. Linking against the script during
-# build resolves into links to the actual used libraries which is just fine
-# for us, so this combined library is a build-time only construct now.
-%if %{with shared}
-libext=so
-%else
-libext=a
-%endif
-comblib=libdpdk.${libext}
-
-echo "GROUP (" > ${comblib}
-find %{buildroot}/%{_libdir}/ -maxdepth 1 -name "*.${libext}" |\
-	sed -e "s:^%{buildroot}/:  :g" >> ${comblib}
-echo ")" >> ${comblib}
-install -m 644 ${comblib} %{buildroot}/%{_libdir}/${comblib}
-
-%if %{with driverctl}
-cd driverctl-%{dctlver}
-make install DESTDIR=%{buildroot}
-cd -
-%endif
+sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk*
 
 %files
 # BSD
 %doc README MAINTAINERS
 %{_bindir}/testpmd
-%{_bindir}/dpdk_proc_info
+%{_bindir}/dpdk-procinfo
+%{_bindir}/dpdk-pdump
 %dir %{pmddir}
 %if %{with shared}
 %{_libdir}/*.so.*
@@ -286,34 +275,55 @@ cd -
 %endif
 %if %{with examples}
 %files examples
-%exclude %{_bindir}/dpdk_proc_info
-%{_bindir}/dpdk_*
+%exclude %{_bindir}/dpdk-procinfo
+%exclude %{_bindir}/dpdk-pdump
+%exclude %{_bindir}/dpdk-pmdinfo
+%{_bindir}/dpdk-*
 %doc %{sdkdir}/examples/
 %endif
 
 %if %{with tools}
 %files tools
 %{sdkdir}/tools/
-%{_sbindir}/dpdk_nic_bind
-%endif
-
-%if %{with driverctl}
-%post -n driverctl
-%udev_rules_update
-
-%postun -n driverctl
-%udev_rules_update
-
-%files -n driverctl
-%{_sbindir}/driverctl
-/usr/lib/udev/rules.d/*.rules
-/usr/lib/udev/vfio_name
-%dir %{_sysconfdir}/driverctl.d
-%{_sysconfdir}/bash-completion.d/driverctl-bash-completion.sh
-%{_mandir}/man8/driverctl.8*
+%{_sbindir}/dpdk-devbind
+%{_bindir}/dpdk-pmdinfo
 %endif
 
 %changelog
+* Fri Jun 23 2017 John W. Linville <linville@redhat.com> - 16.11.2-4
+- Backport "eal/ppc: fix mmap for memory initialization"
+
+* Fri Jun 09 2017 John W. Linville <linville@redhat.com> - 16.11.2-3
+- Enable i40e driver in PowerPC along with its altivec intrinsic support
+- Add PCI probing support for vfio-pci devices in Power8
+
+* Thu Jun 08 2017 John W. Linville <linville@redhat.com> - 16.11.2-2
+- Enable aarch64, ppc64le (#1428587)
+
+* Thu Jun 08 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11.2-1
+- Import from fdProd
+- Update to 16.11.2 (#1459333)
+
+* Wed Mar 22 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11-4
+- Avoid infinite loop while linking with libdpdk.so (#1434907)
+
+* Thu Feb 02 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11-3
+- Make driverctl a different package
+
+* Thu Dec 08 2016 Kevin Traynor <ktraynor@redhat.com> - 16.11-2
+- Update to DPDK 16.11 (#1335865)
+
+* Wed Oct 05 2016 Panu Matilainen <pmatilai@redhat.com> - 16.07-1
+- Update to DPDK 16.07 (#1383195)
+- Disable unstable bnx2x driver (#1330589)
+- Enable librte_vhost NUMA support again (#1279525)
+- Enable librte_cryptodev, its no longer considered experimental
+- Change example prefix to dpdk- for consistency with other utilities
+- Update driverctl to 0.89
+
+* Thu Jul 21 2016 Flavio Leitner <fbl@redhat.com> - 16.04-4
+- Updated to DPDK 16.04
+
 * Wed Mar 16 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-3
 - Disable librte_vhost NUMA support for now, it causes segfaults
 
