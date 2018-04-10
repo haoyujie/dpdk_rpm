@@ -1,15 +1,13 @@
-# Add option to build as static libraries (--without shared)
-%bcond_without shared
 # Add option to build with examples
 %bcond_with examples
 # Add option to build without tools
 %bcond_without tools
 
 # Dont edit Version: and Release: directly, only these:
-%define ver 16.11.2
-%define rel 4
+%define ver 17.11
+%define rel 7
 
-%define srcname dpdk-stable
+%define srcname dpdk
 # Define when building git snapshots
 #define snapver 2086.git263333bb
 
@@ -19,14 +17,24 @@ Name: dpdk
 Version: %{ver}
 Release: %{?snapver:0.%{snapver}.}%{rel}%{?dist}
 URL: http://dpdk.org
-Source: http://dpdk.org/browse/%{srcname}/snapshot/%{srcname}-%{srcver}.tar.xz
-Patch0: mk-move-PMD-libraries-linking-to-applications.patch
-Patch1: net-i40e-implement-vector-PMD-for-altivec.patch
-Patch2: eal-ppc-support-sPAPR-IOMMU-for-vfio-pci.patch
-Patch3: eal-ppc-fix-mmap-for-memory-initialization.patch
+Source: http://fast.dpdk.org/rel/dpdk-%{srcver}.tar.xz
 
 # Only needed for creating snapshot tarballs, not used in build itself
 Source100: dpdk-snapshot.sh
+
+Source500: configlib.sh
+Source501: gen_config_group.sh
+Source502: set_config.sh
+
+# Important: source503 is used as the actual copy file
+# @TODO: this causes a warning - fix it?
+Source504: arm64-armv8a-linuxapp-gcc-config
+Source505: ppc_64-power8-linuxapp-gcc-config
+Source506: x86_64-native-linuxapp-gcc-config
+
+Patch0:    dpdk-dev-v2-1-4-net-virtio-fix-vector-Rx-break-caused-by-rxq-flushing.patch
+Patch1:    0001-vhost_user_protect_active_rings_from_async_ring_changes.patch
+Patch2:    0001-bus-pci-forbid-IOVA-mode-if-IOMMU-address-width-too-.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -41,7 +49,7 @@ License: BSD and LGPLv2 and GPLv2
 # The DPDK is designed to optimize througput of network traffic using, among
 # other techniques, carefully crafted assembly instructions.  As such it
 # needs extensive work to port it to other architectures.
-ExclusiveArch: x86_64 i686 aarch64 ppc64le
+ExclusiveArch: x86_64 aarch64 ppc64le
 
 # machine_arch maps between rpm and dpdk arch name, often same as _target_cpu
 # machine_tmpl is the config template machine name, often "native"
@@ -50,11 +58,6 @@ ExclusiveArch: x86_64 i686 aarch64 ppc64le
 %define machine_arch x86_64
 %define machine_tmpl native
 %define machine default
-%endif
-%ifarch i686
-%define machine_arch i686
-%define machine_tmpl native
-%define machine atm
 %endif
 %ifarch aarch64
 %define machine_arch arm64
@@ -74,7 +77,7 @@ ExclusiveArch: x86_64 i686 aarch64 ppc64le
 %define incdir  %{_includedir}/%{name}
 %define pmddir %{_libdir}/%{name}-pmds
 
-BuildRequires: kernel-headers, libpcap-devel, zlib-devel, numactl-devel
+BuildRequires: kernel-headers, zlib-devel, numactl-devel
 BuildRequires: doxygen, python-sphinx
 
 %description
@@ -84,9 +87,6 @@ fast packet processing in the user space.
 %package devel
 Summary: Data Plane Development Kit development files
 Requires: %{name}%{?_isa} = %{version}-%{release}
-%if ! %{with shared}
-Provides: %{name}-static = %{version}-%{release}
-%endif
 
 %description devel
 This package contains the headers and other files needed for developing
@@ -102,7 +102,8 @@ API programming documentation for the Data Plane Development Kit.
 %if %{with tools}
 %package tools
 Summary: Tools for setting up Data Plane Development Kit environment
-Requires: kmod pciutils findutils iproute
+Requires: %{name} = %{version}-%{release}
+Requires: kmod pciutils findutils iproute python
 
 %description tools
 %{summary}
@@ -123,18 +124,8 @@ as L2 and L3 forwarding.
 %patch0 -p1
 %patch1 -p1
 %patch2 -p1
-%patch3 -p1
 
 %build
-function setconf()
-{
-    cf=%{target}/.config
-    if grep -q ^$1= $cf; then
-        sed -i "s:^$1=.*$:$1=$2:g" $cf
-    else
-        echo $1=$2 >> $cf
-    fi
-}
 # In case dpdk-devel is installed
 unset RTE_SDK RTE_INCLUDE RTE_TARGET
 
@@ -151,34 +142,8 @@ export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:al
 
 make V=1 O=%{target} T=%{target} %{?_smp_mflags} config
 
-setconf CONFIG_RTE_MACHINE '"%{machine}"'
-
-# Enable automatic driver loading from this path
-setconf CONFIG_RTE_EAL_PMD_PATH '"%{pmddir}"'
-
-# Enable pcap and vhost-numa build, the added deps are ok for us
-setconf CONFIG_RTE_LIBRTE_PMD_PCAP y
-setconf CONFIG_RTE_LIBRTE_VHOST_NUMA y
-# Disable unstable driver(s)
-setconf CONFIG_RTE_LIBRTE_BNX2X_PMD n
-
-%if %{with shared}
-setconf CONFIG_RTE_BUILD_SHARED_LIB y
-%endif
-
-# Disable kernel modules
-setconf CONFIG_RTE_EAL_IGB_UIO n
-setconf CONFIG_RTE_LIBRTE_KNI n
-setconf CONFIG_RTE_KNI_KMOD n
-
-# Disable experimental and ABI-breaking code
-setconf CONFIG_RTE_NEXT_ABI n
-
-# Disable some PMDs on fdProd
-setconf CONFIG_RTE_LIBRTE_BNXT_PMD n
-setconf CONFIG_RTE_LIBRTE_ENA_PMD n
-setconf CONFIG_RTE_LIBRTE_PMD_NULL_CRYPTO n
-setconf CONFIG_RTE_LIBRTE_QEDE_PMD n
+cp -f %{SOURCE500} %{SOURCE502} "%{_sourcedir}/%{target}-config" .
+%{SOURCE502} %{target}-config "%{target}/.config"
 
 make V=1 O=%{target} %{?_smp_mflags} 
 
@@ -197,18 +162,18 @@ unset RTE_SDK RTE_INCLUDE RTE_TARGET
 
 # Create a driver directory with symlinks to all pmds
 mkdir -p %{buildroot}/%{pmddir}
-%if %{with shared}
 for f in %{buildroot}/%{_libdir}/*_pmd_*.so.*; do
     bn=$(basename ${f})
     ln -s ../${bn} %{buildroot}%{pmddir}/${bn}
 done
-%endif
 
 %if ! %{with tools}
-rm -rf %{buildroot}%{sdkdir}/tools
+rm -rf %{buildroot}%{sdkdir}/usertools
 rm -rf %{buildroot}%{_sbindir}/dpdk-devbind
 %endif
-rm -f %{buildroot}%{sdkdir}/tools/setup.sh
+rm -f %{buildroot}%{sdkdir}/usertools/dpdk-setup.sh
+rm -f %{buildroot}%{_bindir}/dpdk-test-crypto-perf
+rm -rf %{buildroot}%{_bindir}/dpdk-test-eventdev
 
 %if %{with examples}
 find %{target}/examples/ -name "*.map" | xargs rm -f
@@ -248,10 +213,8 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %{_bindir}/dpdk-procinfo
 %{_bindir}/dpdk-pdump
 %dir %{pmddir}
-%if %{with shared}
 %{_libdir}/*.so.*
 %{pmddir}/*.so.*
-%endif
 
 %files doc
 #BSD
@@ -262,17 +225,13 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %{incdir}/
 %{sdkdir}/
 %if %{with tools}
-%exclude %{sdkdir}/tools/
+%exclude %{sdkdir}/usertools/
 %endif
 %if %{with examples}
 %exclude %{sdkdir}/examples/
 %endif
 %{_sysconfdir}/profile.d/dpdk-sdk-*.*
-%if %{with shared}
 %{_libdir}/*.so
-%else
-%{_libdir}/*.a
-%endif
 %if %{with examples}
 %files examples
 %exclude %{_bindir}/dpdk-procinfo
@@ -284,12 +243,43 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 
 %if %{with tools}
 %files tools
-%{sdkdir}/tools/
+%{sdkdir}/usertools/
 %{_sbindir}/dpdk-devbind
 %{_bindir}/dpdk-pmdinfo
 %endif
 
 %changelog
+* Wed Jan 31 2018 Kevin Traynor <ktraynor@redhat.com> - 17.11-7
+- Backport to forbid IOVA mode if IOMMU address width too small (#1530957)
+
+* Wed Jan 31 2018 Aaron Conole <aconole@redhat.com> - 17.11-6
+- Backport to protect active vhost_user rings (#1525446)
+
+* Tue Jan 09 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-5
+- Real backport of "net/virtio: fix vector Rx break caused by rxq flushing"
+
+* Thu Dec 14 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-4
+- Backport "net/virtio: fix vector Rx break caused by rxq flushing"
+
+* Wed Dec 06 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-3
+- Enable ENIC only for x86_64
+
+* Wed Dec 06 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-2
+- Re-add main package dependency from dpdk-tools
+- Add explicit python dependency to dpdk-tools
+
+* Tue Nov 28 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-1
+- Update to DPDK 17.11 (#1522700)
+- Use a static configuration file
+- Remove i686 from ExclusiveArch since it's not supported on RHEL7
+- Remove "--without shared" support
+
+* Fri Oct 13 2017 Josh Boyer <jwboyer@redhat.com> - 16.11.2-6
+- Rebuild to pick up all arches
+
+* Fri Oct 13 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11.2-5
+- Enable only supported PMDs (#1497384)
+
 * Fri Jun 23 2017 John W. Linville <linville@redhat.com> - 16.11.2-4
 - Backport "eal/ppc: fix mmap for memory initialization"
 
