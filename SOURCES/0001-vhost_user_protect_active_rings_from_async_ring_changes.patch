@@ -7,7 +7,6 @@ Subject: [dpdk-dev,
 From: Victor Kaplansky <victork@redhat.com>
 X-Patchwork-Id: 33921
 X-Patchwork-Delegate: yuanhan.liu@linux.intel.com
-Message-Id: <20180117154925-mutt-send-email-victork@redhat.com>
 List-Id: dev.dpdk.org
 To: dev@dpdk.org
 Cc: stable@dpdk.org, Jens Freimann <jfreiman@redhat.com>,
