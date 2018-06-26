@@ -5,7 +5,7 @@
 
 # Dont edit Version: and Release: directly, only these:
 %define ver 17.11
-%define rel 7
+%define rel 11
 
 %define srcname dpdk
 # Define when building git snapshots
@@ -32,9 +32,111 @@ Source504: arm64-armv8a-linuxapp-gcc-config
 Source505: ppc_64-power8-linuxapp-gcc-config
 Source506: x86_64-native-linuxapp-gcc-config
 
-Patch0:    dpdk-dev-v2-1-4-net-virtio-fix-vector-Rx-break-caused-by-rxq-flushing.patch
-Patch1:    0001-vhost_user_protect_active_rings_from_async_ring_changes.patch
-Patch2:    0001-bus-pci-forbid-IOVA-mode-if-IOMMU-address-width-too-.patch
+# Patches only in dpdk package
+Patch0:   dpdk-dev-v2-1-4-net-virtio-fix-vector-Rx-break-caused-by-rxq-flushing.patch
+Patch2:   0001-bus-pci-forbid-IOVA-mode-if-IOMMU-address-width-too-.patch
+
+# Patches in common with the openvswitch package
+Patch400: 0001-vhost_user_protect_active_rings_from_async_ring_changes.patch
+
+Patch410: 0001-net-enic-fix-crash-due-to-static-max-number-of-queue.patch
+Patch411: 0001-net-enic-fix-L4-Rx-ptype-comparison.patch
+
+Patch420: 0001-vhost-prevent-features-to-be-changed-while-device-is.patch
+Patch421: 0002-vhost-propagate-set-features-handling-error.patch
+Patch422: 0003-vhost-extract-virtqueue-cleaning-and-freeing-functio.patch
+Patch423: 0004-vhost-destroy-unused-virtqueues-when-multiqueue-not-.patch
+Patch424: 0005-vhost-add-flag-for-built-in-virtio-driver.patch
+Patch425: 0006-vhost-drop-virtqueues-only-with-built-in-virtio-driv.patch
+Patch426: 0001-vhost-fix-IOTLB-pool-out-of-memory-handling.patch
+Patch427: 0001-vhost-remove-pending-IOTLB-entry-if-miss-request-fai.patch
+
+Patch430: 0001-net-mlx5-use-PCI-address-as-port-name.patch
+Patch435: 0001-net-mlx4-fix-broadcast-Rx.patch
+
+# Backport MLX patches to avoid runtime dependencies on rdma-core
+Patch451: mlnx-dpdk-0001-net-mlx4-move-rdma-core-calls-to-separate-file.patch
+Patch452: mlnx-dpdk-0002-net-mlx4-spawn-rdma-core-dependency-plug-in.patch
+Patch453: mlnx-dpdk-0003-net-mlx5-move-rdma-core-calls-to-separate-file.patch
+Patch454: mlnx-dpdk-0004-net-mlx5-spawn-rdma-core-dependency-plug-in.patch
+Patch455: mlnx-dpdk-0005-net-mlx-add-debug-checks-to-glue-structure.patch
+Patch456: mlnx-dpdk-0006-net-mlx-fix-missing-includes-for-rdma-core-glue.patch
+Patch457: mlnx-dpdk-0007-net-mlx-version-rdma-core-glue-libraries.patch
+Patch458: mlnx-dpdk-0008-net-mlx-make-rdma-core-glue-path-configurable.patch
+
+# Fixes for allowing to run as non-root
+Patch459: mlnx-dpdk-0009-net-mlx-control-netdevices-through-ioctl-only.patch
+
+# Backport bnxt patch to fix link down issues when autonegotiation is turned off
+Patch460: 0001-net-bnxt-fix-link-speed-setting-with-autoneg-off.patch
+
+# Bug 1559612
+Patch465: dpdk-17.11-i40e-fix-link-status-timeout.patch
+
+# QEDE fixes
+Patch468: 0001-net-qede-fix-MTU-set-and-max-Rx-length.patch
+Patch469: 0001-net-qede-fix-few-log-messages.patch
+
+# Bug 1566712
+Patch470: 0001-net-nfp-support-CPP.patch
+Patch471: 0002-net-nfp-use-new-CPP-interface.patch
+Patch472: 0003-net-nfp-remove-files.patch
+
+# Bug 1567634
+Patch475: bnxt-dpdk-0001-net-bnxt-cache-address-of-doorbell-to-subsequent-acc.patch
+Patch476: bnxt-dpdk-0002-net-bnxt-avoid-invalid-vnic-id-in-set-L2-Rx-mask.patch
+Patch477: bnxt-dpdk-0003-net-bnxt-fix-mbuf-data-offset-initialization.patch
+
+# Bug 1544298
+# DPDK CVE-2018-1059 : Information exposure in unchecked guest physical to host virtual address
+Patch480: 0001-vhost-fix-indirect-descriptors-table-translation-siz.patch
+Patch481: 0002-vhost-check-all-range-is-mapped-when-translating-GPA.patch
+Patch482: 0003-vhost-introduce-safe-API-for-GPA-translation.patch
+Patch483: 0004-vhost-ensure-all-range-is-mapped-when-translating-QV.patch
+Patch484: 0005-vhost-add-support-for-non-contiguous-indirect-descs-.patch
+Patch485: 0006-vhost-handle-virtually-non-contiguous-buffers-in-Tx.patch
+Patch486: 0007-vhost-handle-virtually-non-contiguous-buffers-in-Rx.patch
+Patch487: 0008-vhost-handle-virtually-non-contiguous-buffers-in-Rx-.patch
+Patch488: 0009-examples-vhost-move-to-safe-GPA-translation-API.patch
+Patch489: 0010-examples-vhost_scsi-move-to-safe-GPA-translation-API.patch
+Patch490: 0011-vhost-deprecate-unsafe-GPA-translation-API.patch
+
+# enic fixes
+Patch500: 0001-net-enic-allocate-stats-DMA-buffer-upfront-during-pr.patch
+Patch501: 0001-net-enic-fix-crash-on-MTU-update-with-non-setup-queu.patch
+
+# Bug 1575067
+Patch510: 0001-net-nfp-fix-mbufs-releasing-when-stop-or-close.patch
+
+# Bug 1560728
+Patch520: 0001-eal-abstract-away-the-auxiliary-vector.patch
+Patch521: 0001-eal-fix-build-with-glibc-2.16.patch
+Patch522: 0002-eal-fix-build-on-FreeBSD.patch
+
+# Bug 1552465
+Patch530: 0001-vhost-improve-dirty-pages-logging-performance.patch
+
+# Bug 1583161
+Patch540: 0001-net-nfp-configure-default-RSS-reta-table.patch
+
+# Bug 1583670
+Patch545: 0001-net-nfp-fix-lock-file-usage.patch
+
+# Bug 1578981
+Patch550: 0001-net-qede-fix-L2-handles-used-for-RSS-hash-update.patch
+
+# Bug 1578590
+Patch555: 0001-net-qede-fix-unicast-filter-routine-return-code.patch
+
+# Bug 1589866
+Patch560: 0001-net-qede-fix-memory-alloc-for-multiple-port-reconfig.patch
+
+# Bug 1581230
+Patch570: 0001-net-mlx5-fix-memory-region-cache-lookup.patch
+Patch571: 0001-net-mlx5-fix-memory-region-boundary-checks.patch
+
+# Patches only in dpdk package
+Patch700: 0001-net-mlx-fix-rdma-core-glue-path-with-EAL-plugins.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -77,8 +179,12 @@ ExclusiveArch: x86_64 aarch64 ppc64le
 %define incdir  %{_includedir}/%{name}
 %define pmddir %{_libdir}/%{name}-pmds
 
-BuildRequires: kernel-headers, zlib-devel, numactl-devel
+BuildRequires: gcc, kernel-headers, zlib-devel, numactl-devel
 BuildRequires: doxygen, python-sphinx
+%ifarch x86_64
+BuildRequires: rdma-core-devel >= 15
+%global __requires_exclude_from ^%{_libdir}/librte_pmd_mlx[45]_glue\.so.*$
+%endif
 
 %description
 The Data Plane Development Kit is a set of libraries and drivers for
@@ -120,10 +226,7 @@ as L2 and L3 forwarding.
 %endif
 
 %prep
-%setup -q -n %{srcname}-%{srcver}
-%patch0 -p1
-%patch1 -p1
-%patch2 -p1
+%autosetup -n %{srcname}-%{srcver} -p1
 
 %build
 # In case dpdk-devel is installed
@@ -164,6 +267,15 @@ unset RTE_SDK RTE_INCLUDE RTE_TARGET
 mkdir -p %{buildroot}/%{pmddir}
 for f in %{buildroot}/%{_libdir}/*_pmd_*.so.*; do
     bn=$(basename ${f})
+%ifarch x86_64
+    case $bn in
+    librte_pmd_mlx[45]_glue.so.*)
+        mkdir -p %{buildroot}/%{pmddir}-glue
+        ln -s ../${bn} %{buildroot}%{pmddir}-glue/${bn}
+        continue
+        ;;
+    esac
+%endif
     ln -s ../${bn} %{buildroot}%{pmddir}/${bn}
 done
 
@@ -215,6 +327,10 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %dir %{pmddir}
 %{_libdir}/*.so.*
 %{pmddir}/*.so.*
+%ifarch x86_64
+%dir %{pmddir}-glue
+%{pmddir}-glue/*.so.*
+%endif
 
 %files doc
 #BSD
@@ -249,6 +365,22 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Thu Jun 14 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-11
+- Re-align with DPDK patches inside OVS FDP 18.06 (#1591198)
+
+* Mon Jun 11 2018 Aaron Conole <aconole@redhat.com> - 17.11-10
+- Fix mlx5 memory region boundary checks (#1581230)
+
+* Thu Jun 07 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-9
+- Add 2 missing QEDE patches
+- Fix previous changelog date
+
+* Thu Jun 07 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-8
+- Align with DPDK patches inside OVS FDP 18.06
+- Enable BNXT, MLX4, MLX5, NFP and QEDE PMDs
+- Backport "net/mlx: fix rdma-core glue path with EAL plugins" (only needed on
+  DPDK package)
+
 * Wed Jan 31 2018 Kevin Traynor <ktraynor@redhat.com> - 17.11-7
 - Backport to forbid IOVA mode if IOMMU address width too small (#1530957)
 
