@@ -5,7 +5,7 @@
 
 # Dont edit Version: and Release: directly, only these:
 %define ver 17.11
-%define rel 11
+%define rel 13
 
 %define srcname dpdk
 # Define when building git snapshots
@@ -115,12 +115,20 @@ Patch522: 0002-eal-fix-build-on-FreeBSD.patch
 
 # Bug 1552465
 Patch530: 0001-vhost-improve-dirty-pages-logging-performance.patch
+# Bug 1598752
+Patch532: 0001-vhost-fix-missing-increment-of-log-cache-count.patch
 
 # Bug 1583161
 Patch540: 0001-net-nfp-configure-default-RSS-reta-table.patch
 
-# Bug 1583670
+# Bug 1568301
+## Bug 1583670
 Patch545: 0001-net-nfp-fix-lock-file-usage.patch
+## Bug 1594740
+Patch547: 0001-net-nfp-use-generic-PCI-config-access-functions.patch
+## Bug 1596324
+Patch548: 0001-net-nfp-avoid-sysfs-resource-file-access.patch
+Patch549: 0002-net-nfp-avoid-access-to-sysfs-resource0-file.patch
 
 # Bug 1578981
 Patch550: 0001-net-qede-fix-L2-handles-used-for-RSS-hash-update.patch
@@ -134,6 +142,12 @@ Patch560: 0001-net-qede-fix-memory-alloc-for-multiple-port-reconfig.patch
 # Bug 1581230
 Patch570: 0001-net-mlx5-fix-memory-region-cache-lookup.patch
 Patch571: 0001-net-mlx5-fix-memory-region-boundary-checks.patch
+
+# Bug 1589264
+Patch575: 0001-net-bnxt-fix-set-MTU.patch
+
+# Bug 1610481
+Patch580: 0001-net-i40e-fix-port-segmentation-fault-when-restart.patch
 
 # Patches only in dpdk package
 Patch700: 0001-net-mlx-fix-rdma-core-glue-path-with-EAL-plugins.patch
@@ -284,8 +298,9 @@ rm -rf %{buildroot}%{sdkdir}/usertools
 rm -rf %{buildroot}%{_sbindir}/dpdk-devbind
 %endif
 rm -f %{buildroot}%{sdkdir}/usertools/dpdk-setup.sh
+rm -f %{buildroot}%{_bindir}/dpdk-pmdinfo
 rm -f %{buildroot}%{_bindir}/dpdk-test-crypto-perf
-rm -rf %{buildroot}%{_bindir}/dpdk-test-eventdev
+rm -f %{buildroot}%{_bindir}/dpdk-test-eventdev
 
 %if %{with examples}
 find %{target}/examples/ -name "*.map" | xargs rm -f
@@ -352,7 +367,6 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %files examples
 %exclude %{_bindir}/dpdk-procinfo
 %exclude %{_bindir}/dpdk-pdump
-%exclude %{_bindir}/dpdk-pmdinfo
 %{_bindir}/dpdk-*
 %doc %{sdkdir}/examples/
 %endif
@@ -361,10 +375,16 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %files tools
 %{sdkdir}/usertools/
 %{_sbindir}/dpdk-devbind
-%{_bindir}/dpdk-pmdinfo
 %endif
 
 %changelog
+* Tue Jul 31 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-13
+- Re-align with DPDK patches inside OVS FDP 18.08 (#1610407)
+- Backport "net/i40e: fix port segmentation fault when restart" (#1610481)
+
+* Mon Jul 23 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-12
+- Remove dpdk-pmdinfo (#1494462)
+
 * Thu Jun 14 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-11
 - Re-align with DPDK patches inside OVS FDP 18.06 (#1591198)
 
