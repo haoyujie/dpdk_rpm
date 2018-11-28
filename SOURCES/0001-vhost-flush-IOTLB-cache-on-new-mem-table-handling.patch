@@ -1,0 +1,87 @@
+From af53db486792f3d864c9a30dc13ee12402994640 Mon Sep 17 00:00:00 2001
+From: Maxime Coquelin <maxime.coquelin@redhat.com>
+Date: Thu, 2 Aug 2018 19:21:22 +0200
+Subject: [PATCH] vhost: flush IOTLB cache on new mem table handling
+
+IOTLB entries contain the host virtual address of the guest
+pages. When receiving a new VHOST_USER_SET_MEM_TABLE request,
+the previous regions get unmapped, so the IOTLB entries, if any,
+will be invalid. It does cause the vhost-user process to
+segfault.
+
+This patch introduces a new function to flush the IOTLB cache,
+and call it as soon as the backend handles a VHOST_USER_SET_MEM
+request.
+
+Fixes: 69c90e98f483 ("vhost: enable IOMMU support")
+Cc: stable@dpdk.org
+
+Signed-off-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+Reviewed-by: Tiwei Bie <tiwei.bie@intel.com>
+Reviewed-by: Jens Freimann <jfreimann@redhat.com>
+---
+ lib/librte_vhost/iotlb.c      | 10 ++++++++--
+ lib/librte_vhost/iotlb.h      |  2 +-
+ lib/librte_vhost/vhost_user.c |  5 +++++
+ 3 files changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/lib/librte_vhost/iotlb.c b/lib/librte_vhost/iotlb.c
+index c11ebcaac..c6354fef7 100644
+--- a/lib/librte_vhost/iotlb.c
++++ b/lib/librte_vhost/iotlb.c
+@@ -303,6 +303,13 @@ vhost_user_iotlb_cache_find(struct vhost_virtqueue *vq, uint64_t iova,
+ 	return vva;
+ }
+ 
++void
++vhost_user_iotlb_flush_all(struct vhost_virtqueue *vq)
++{
++	vhost_user_iotlb_cache_remove_all(vq);
++	vhost_user_iotlb_pending_remove_all(vq);
++}
++
+ int
+ vhost_user_iotlb_init(struct virtio_net *dev, int vq_index)
+ {
+@@ -315,8 +322,7 @@ vhost_user_iotlb_init(struct virtio_net *dev, int vq_index)
+ 		 * The cache has already been initialized,
+ 		 * just drop all cached and pending entries.
+ 		 */
+-		vhost_user_iotlb_cache_remove_all(vq);
+-		vhost_user_iotlb_pending_remove_all(vq);
++		vhost_user_iotlb_flush_all(vq);
+ 	}
+ 
+ #ifdef RTE_LIBRTE_VHOST_NUMA
+diff --git a/lib/librte_vhost/iotlb.h b/lib/librte_vhost/iotlb.h
+index e7083e37b..60b9e4c57 100644
+--- a/lib/librte_vhost/iotlb.h
++++ b/lib/librte_vhost/iotlb.h
+@@ -73,7 +73,7 @@ void vhost_user_iotlb_pending_insert(struct vhost_virtqueue *vq, uint64_t iova,
+ 						uint8_t perm);
+ void vhost_user_iotlb_pending_remove(struct vhost_virtqueue *vq, uint64_t iova,
+ 						uint64_t size, uint8_t perm);
+-
++void vhost_user_iotlb_flush_all(struct vhost_virtqueue *vq);
+ int vhost_user_iotlb_init(struct virtio_net *dev, int vq_index);
+ 
+ #endif /* _VHOST_IOTLB_H_ */
+diff --git a/lib/librte_vhost/vhost_user.c b/lib/librte_vhost/vhost_user.c
+index dc53ff712..a2d4c9ffc 100644
+--- a/lib/librte_vhost/vhost_user.c
++++ b/lib/librte_vhost/vhost_user.c
+@@ -813,6 +813,11 @@ vhost_user_set_mem_table(struct virtio_net **pdev, struct VhostUserMsg *pmsg)
+ 		dev->mem = NULL;
+ 	}
+ 
++	/* Flush IOTLB cache as previous HVAs are now invalid */
++	if (dev->features & (1ULL << VIRTIO_F_IOMMU_PLATFORM))
++		for (i = 0; i < dev->nr_vring; i++)
++			vhost_user_iotlb_flush_all(dev->virtqueue[i]);
++
+ 	dev->nr_guest_pages = 0;
+ 	if (!dev->guest_pages) {
+ 		dev->max_guest_pages = 8;
+-- 
+2.17.1
+

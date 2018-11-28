@@ -5,7 +5,7 @@
 
 # Dont edit Version: and Release: directly, only these:
 %define ver 17.11
-%define rel 13
+%define rel 15
 
 %define srcname dpdk
 # Define when building git snapshots
@@ -34,7 +34,6 @@ Source506: x86_64-native-linuxapp-gcc-config
 
 # Patches only in dpdk package
 Patch0:   dpdk-dev-v2-1-4-net-virtio-fix-vector-Rx-break-caused-by-rxq-flushing.patch
-Patch2:   0001-bus-pci-forbid-IOVA-mode-if-IOMMU-address-width-too-.patch
 
 # Patches in common with the openvswitch package
 Patch400: 0001-vhost_user_protect_active_rings_from_async_ring_changes.patch
@@ -148,6 +147,26 @@ Patch575: 0001-net-bnxt-fix-set-MTU.patch
 
 # Bug 1610481
 Patch580: 0001-net-i40e-fix-port-segmentation-fault-when-restart.patch
+
+# Bug 1609643
+Patch585: 0001-vhost-flush-IOTLB-cache-on-new-mem-table-handling.patch
+
+# Bug 1618488
+Patch590: 0001-vhost-retranslate-vring-addr-when-memory-table-chang.patch
+
+# Bug 1627285
+Patch600: 0001-net-mlx4-avoid-stripping-the-glue-library.patch
+Patch601: 0002-net-mlx5-avoid-stripping-the-glue-library.patch
+
+# Bug 1634820 (part 2)
+Patch610: 0001-mem-add-function-for-checking-memsegs-IOVAs-addresse.patch
+# dependency
+Patch611: 0001-bus-pci-forbid-IOVA-mode-if-IOMMU-address-width-too-.patch
+Patch612: 0002-bus-pci-use-IOVAs-check-when-setting-IOVA-mode.patch
+Patch613: 0003-mem-use-address-hint-for-mapping-hugepages.patch
+Patch614: 0004-net-nfp-check-hugepages-IOVAs-based-on-DMA-mask.patch
+Patch615: 0005-net-nfp-support-IOVA-VA-mode.patch
+Patch616: 0001-mem-fix-max-DMA-maskbit-size.patch
 
 # Patches only in dpdk package
 Patch700: 0001-net-mlx-fix-rdma-core-glue-path-with-EAL-plugins.patch
@@ -378,6 +397,12 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Mon Nov 05 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-15
+- Re-align with DPDK patches inside OVS FDP 18.11 (#1646598)
+
+* Fri Sep 14 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-14
+- Backport "net/mlx{4,5}: avoid stripping the glue library" (#1627285)
+
 * Tue Jul 31 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-13
 - Re-align with DPDK patches inside OVS FDP 18.08 (#1610407)
 - Backport "net/i40e: fix port segmentation fault when restart" (#1610481)

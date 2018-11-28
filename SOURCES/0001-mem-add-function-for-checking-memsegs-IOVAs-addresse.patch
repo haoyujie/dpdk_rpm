@@ -1,0 +1,114 @@
+From 3a80bc50c949760f7159b59ba30a70f95c223448 Mon Sep 17 00:00:00 2001
+From: Alejandro Lucero <alejandro.lucero@netronome.com>
+Date: Tue, 10 Jul 2018 18:25:48 +0100
+Subject: [1/5] mem: add function for checking memsegs IOVAs addresses
+
+A device can suffer addressing limitations. This functions checks
+memsegs have iovas within the supported range based on dma mask.
+
+PMD should use this during initialization if supported devices
+suffer addressing limitations, returning an error if this function
+returns memsegs out of range.
+
+Another potential usage is for emulated IOMMU hardware with addressing
+limitations.
+
+Applicable to v17.11.3 only.
+
+Signed-off-by: Alejandro Lucero <alejandro.lucero@netronome.com>
+Acked-by: Anatoly Burakov <anatoly.burakov@intel.com>
+Acked-by: Eelco Chaudron <echaudro@redhat.com>
+---
+ lib/librte_eal/common/eal_common_memory.c  | 48 ++++++++++++++++++++++++++++++
+ lib/librte_eal/common/include/rte_memory.h |  3 ++
+ lib/librte_eal/rte_eal_version.map         |  1 +
+ 3 files changed, 52 insertions(+)
+
+diff --git a/lib/librte_eal/common/eal_common_memory.c b/lib/librte_eal/common/eal_common_memory.c
+index fc6c44d..00ab393 100644
+--- a/lib/librte_eal/common/eal_common_memory.c
++++ b/lib/librte_eal/common/eal_common_memory.c
+@@ -109,6 +109,54 @@ rte_dump_physmem_layout(FILE *f)
+ 	}
+ }
+ 
++#if defined(RTE_ARCH_X86)
++#define X86_VA_WIDTH 47 /* From Documentation/x86/x86_64/mm.txt */
++#define MAX_DMA_MASK_BITS X86_VA_WIDTH
++#else
++/* 63 bits is good enough for a sanity check */
++#define MAX_DMA_MASK_BITS 63
++#endif
++
++/* check memseg iovas are within the required range based on dma mask */
++int
++rte_eal_check_dma_mask(uint8_t maskbits)
++{
++
++	const struct rte_mem_config *mcfg;
++	uint64_t mask;
++	int i;
++
++	/* sanity check */
++	if (maskbits > MAX_DMA_MASK_BITS) {
++		RTE_LOG(INFO, EAL, "wrong dma mask size %u (Max: %u)\n",
++				   maskbits, MAX_DMA_MASK_BITS);
++		return -1;
++	}
++
++	/* create dma mask */
++	mask = ~((1ULL << maskbits) - 1);
++
++	/* get pointer to global configuration */
++	mcfg = rte_eal_get_configuration()->mem_config;
++
++	for (i = 0; i < RTE_MAX_MEMSEG; i++) {
++		if (mcfg->memseg[i].addr == NULL)
++			break;
++
++		if (mcfg->memseg[i].iova & mask) {
++			RTE_LOG(INFO, EAL,
++				"memseg[%d] iova %"PRIx64" out of range:\n",
++				i, mcfg->memseg[i].iova);
++
++			RTE_LOG(INFO, EAL, "\tusing dma mask %"PRIx64"\n",
++				mask);
++			return -1;
++		}
++	}
++
++	return 0;
++}
++
+ /* return the number of memory channels */
+ unsigned rte_memory_get_nchannel(void)
+ {
+diff --git a/lib/librte_eal/common/include/rte_memory.h b/lib/librte_eal/common/include/rte_memory.h
+index 80a8fc0..b2a0168 100644
+--- a/lib/librte_eal/common/include/rte_memory.h
++++ b/lib/librte_eal/common/include/rte_memory.h
+@@ -209,6 +209,9 @@ unsigned rte_memory_get_nchannel(void);
+  */
+ unsigned rte_memory_get_nrank(void);
+ 
++/* check memsegs iovas are within a range based on dma mask */
++int rte_eal_check_dma_mask(uint8_t maskbits);
++
+ /**
+  * Drivers based on uio will not load unless physical
+  * addresses are obtainable. It is only possible to get
+diff --git a/lib/librte_eal/rte_eal_version.map b/lib/librte_eal/rte_eal_version.map
+index f4f46c1..aa6cf87 100644
+--- a/lib/librte_eal/rte_eal_version.map
++++ b/lib/librte_eal/rte_eal_version.map
+@@ -184,6 +184,7 @@ DPDK_17.11 {
+ 
+ 	rte_eal_create_uio_dev;
+ 	rte_bus_get_iommu_class;
++	rte_eal_check_dma_mask;
+ 	rte_eal_has_pci;
+ 	rte_eal_iova_mode;
+ 	rte_eal_mbuf_default_mempool_ops;
+-- 
+1.8.3.1
+

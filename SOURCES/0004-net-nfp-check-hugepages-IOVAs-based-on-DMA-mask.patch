@@ -1,0 +1,39 @@
+From 1b0deb27e144107939d3ac1119723b4a0e51a191 Mon Sep 17 00:00:00 2001
+From: Alejandro Lucero <alejandro.lucero@netronome.com>
+Date: Tue, 10 Jul 2018 18:25:51 +0100
+Subject: [4/5] net/nfp: check hugepages IOVAs based on DMA mask
+
+NFP devices can not handle DMA addresses requiring more than
+40 bits. This patch uses rte_dev_check_dma_mask with 40 bits
+and avoids device initialization if memory out of NFP range.
+
+Applicable to v17.11.3 only.
+
+Signed-off-by: Alejandro Lucero <alejandro.lucero@netronome.com>
+Acked-by: Eelco Chaudron <echaudro@redhat.com>
+---
+ drivers/net/nfp/nfp_net.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/drivers/net/nfp/nfp_net.c b/drivers/net/nfp/nfp_net.c
+index 96484d9..d2a240a 100644
+--- a/drivers/net/nfp/nfp_net.c
++++ b/drivers/net/nfp/nfp_net.c
+@@ -2653,6 +2653,14 @@ nfp_net_init(struct rte_eth_dev *eth_dev)
+ 
+ 	pci_dev = RTE_ETH_DEV_TO_PCI(eth_dev);
+ 
++	/* NFP can not handle DMA addresses requiring more than 40 bits */
++	if (rte_eal_check_dma_mask(40) < 0) {
++		RTE_LOG(INFO, PMD, "device %s can not be used:",
++				   pci_dev->device.name);
++		RTE_LOG(INFO, PMD, "\trestricted dma mask to 40 bits!\n");
++		return -ENODEV;
++	};
++
+ 	if ((pci_dev->id.device_id == PCI_DEVICE_ID_NFP4000_PF_NIC) ||
+ 	    (pci_dev->id.device_id == PCI_DEVICE_ID_NFP6000_PF_NIC)) {
+ 		port = get_pf_port_number(eth_dev->data->name);
+-- 
+1.8.3.1
+
