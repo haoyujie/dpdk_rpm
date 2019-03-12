@@ -145,6 +145,8 @@ do
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_COMMON_DPAAX n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_CAAM_JR n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_CAAM_JR_BE n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_BBDEV_NULL n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_OCTEONTX_CRYPTO n
 
     # whitelist of enabled PMDs
     # Soft PMDs to enable
