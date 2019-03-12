@@ -9,7 +9,7 @@
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
 %define ver 18.11
-%define rel 2
+%define rel 3
 
 %define srcname dpdk
 
@@ -35,6 +35,11 @@ Source502: set_config.sh
 Source504: arm64-armv8a-linuxapp-gcc-config
 Source505: ppc_64-power8-linuxapp-gcc-config
 Source506: x86_64-native-linuxapp-gcc-config
+
+# Patches only in dpdk package
+Patch0: 0001-bus-vmbus-fix-race-in-subchannel-creation.patch
+Patch1: 0002-net-netvsc-enable-SR-IOV.patch
+Patch2: 0003-net-netvsc-disable-multi-queue-on-older-servers.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -275,6 +280,9 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Wed Feb 06 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11.3
+- Backport NETVSC pmd fixes (#1662292)
+
 * Tue Nov 27 2018 Timothy Redaelli <tredaelli@redhat.com> - 18.11-2
 - Fix python scripts hashbang
 - Remove meson.build from dpdk-tools
