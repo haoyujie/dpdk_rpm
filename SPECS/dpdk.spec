@@ -9,7 +9,7 @@
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
 %define ver 18.11
-%define rel 3
+%define rel 4
 
 %define srcname dpdk
 
@@ -40,6 +40,7 @@ Source506: x86_64-native-linuxapp-gcc-config
 Patch0: 0001-bus-vmbus-fix-race-in-subchannel-creation.patch
 Patch1: 0002-net-netvsc-enable-SR-IOV.patch
 Patch2: 0003-net-netvsc-disable-multi-queue-on-older-servers.patch
+Patch3: 0004-net-virtio-set-offload-flag-for-jumbo-frames.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -280,6 +281,9 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Mon Feb 18 2019 Jens Freimann <jfreiman@redhat.com> - 18.11-4
+- Set correct offload flags for virtio and allow jumbo frames (#1669355)
+
 * Wed Feb 06 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11.3
 - Backport NETVSC pmd fixes (#1662292)
 
