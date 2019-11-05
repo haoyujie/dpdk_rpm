@@ -1,0 +1,97 @@
+From f3bf9a1a9b1ad3419b436855306ad8b5d8efab2f Mon Sep 17 00:00:00 2001
+From: Maxime Coquelin <maxime.coquelin@redhat.com>
+Date: Thu, 20 Dec 2018 17:47:55 +0100
+Subject: [PATCH 18/18] vhost: batch used descs chains write-back with packed
+ ring
+
+[ upstream commit b473ec1131ee44ee25e0536a04be65246b93f4f3 ]
+
+Instead of writing back descriptors chains in order, let's
+write the first chain flags last in order to improve batching.
+
+Also, move the write barrier in logging cache sync, so that it
+is done only when logging is enabled. It means there is now
+one more barrier for split ring when logging is enabled.
+
+With Kernel's pktgen benchmark, ~3% performance gain is measured.
+
+Signed-off-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+Acked-by: Michael S. Tsirkin <mst@redhat.com>
+Reviewed-by: Tiwei Bie <tiwei.bie@intel.com>
+(cherry picked from commit b473ec1131ee44ee25e0536a04be65246b93f4f3)
+Signed-off-by: Jens Freimann <jfreimann@redhat.com>
+---
+ lib/librte_vhost/vhost.h      |  7 ++-----
+ lib/librte_vhost/virtio_net.c | 19 ++++++++++++++++---
+ 2 files changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/lib/librte_vhost/vhost.h b/lib/librte_vhost/vhost.h
+index 552b9298d..adc2fb78e 100644
+--- a/lib/librte_vhost/vhost.h
++++ b/lib/librte_vhost/vhost.h
+@@ -456,12 +456,9 @@ vhost_log_cache_sync(struct virtio_net *dev, struct vhost_virtqueue *vq)
+ 		   !dev->log_base))
+ 		return;
+ 
+-	log_base = (unsigned long *)(uintptr_t)dev->log_base;
++	rte_smp_wmb();
+ 
+-	/*
+-	 * It is expected a write memory barrier has been issued
+-	 * before this function is called.
+-	 */
++	log_base = (unsigned long *)(uintptr_t)dev->log_base;
+ 
+ 	for (i = 0; i < vq->log_cache_nb_elem; i++) {
+ 		struct log_cache_entry *elem = vq->log_cache + i;
+diff --git a/lib/librte_vhost/virtio_net.c b/lib/librte_vhost/virtio_net.c
+index 15d682c3c..ec70ef947 100644
+--- a/lib/librte_vhost/virtio_net.c
++++ b/lib/librte_vhost/virtio_net.c
+@@ -136,6 +136,8 @@ flush_shadow_used_ring_packed(struct virtio_net *dev,
+ {
+ 	int i;
+ 	uint16_t used_idx = vq->last_used_idx;
++	uint16_t head_idx = vq->last_used_idx;
++	uint16_t head_flags = 0;
+ 
+ 	/* Split loop in two to save memory barriers */
+ 	for (i = 0; i < vq->shadow_used_idx; i++) {
+@@ -165,12 +167,17 @@ flush_shadow_used_ring_packed(struct virtio_net *dev,
+ 			flags &= ~VRING_DESC_F_AVAIL;
+ 		}
+ 
+-		vq->desc_packed[vq->last_used_idx].flags = flags;
++		if (i > 0) {
++			vq->desc_packed[vq->last_used_idx].flags = flags;
+ 
+-		vhost_log_cache_used_vring(dev, vq,
++			vhost_log_cache_used_vring(dev, vq,
+ 					vq->last_used_idx *
+ 					sizeof(struct vring_packed_desc),
+ 					sizeof(struct vring_packed_desc));
++		} else {
++			head_idx = vq->last_used_idx;
++			head_flags = flags;
++		}
+ 
+ 		vq->last_used_idx += vq->shadow_used_packed[i].count;
+ 		if (vq->last_used_idx >= vq->size) {
+@@ -179,7 +186,13 @@ flush_shadow_used_ring_packed(struct virtio_net *dev,
+ 		}
+ 	}
+ 
+-	rte_smp_wmb();
++	vq->desc_packed[head_idx].flags = head_flags;
++
++	vhost_log_cache_used_vring(dev, vq,
++				head_idx *
++				sizeof(struct vring_packed_desc),
++				sizeof(struct vring_packed_desc));
++
+ 	vq->shadow_used_idx = 0;
+ 	vhost_log_cache_sync(dev, vq);
+ }
+-- 
+2.21.0
+

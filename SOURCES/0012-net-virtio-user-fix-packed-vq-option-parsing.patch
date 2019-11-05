@@ -1,0 +1,85 @@
+From ec53a1992df973607cbb10db6a0816ed2ef498dd Mon Sep 17 00:00:00 2001
+From: Tiwei Bie <tiwei.bie@intel.com>
+Date: Thu, 3 Jan 2019 10:40:06 +0800
+Subject: [PATCH] net/virtio-user: fix packed vq option parsing
+
+[ upstream commit 9070f88b81dab42739fb169265e3ea727e47dfa2 ]
+
+Add the RING_PACKED feature to dev->unsupported_features
+when it's disabled, and add the missing packed vq param
+string. And also revert the unexpected change to MAC option
+introduced when adding packed vq option.
+
+Fixes: 34f3966c7f81 ("net/virtio-user: add option to use packed queues")
+
+Signed-off-by: Tiwei Bie <tiwei.bie@intel.com>
+Reviewed-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+(cherry picked from commit 9070f88b81dab42739fb169265e3ea727e47dfa2)
+Signed-off-by: Jens Freimann <jfreimann@redhat.com>
+---
+ drivers/net/virtio/virtio_user/virtio_user_dev.c | 11 ++++-------
+ drivers/net/virtio/virtio_user_ethdev.c          |  7 ++++---
+ 2 files changed, 8 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/net/virtio/virtio_user/virtio_user_dev.c b/drivers/net/virtio/virtio_user/virtio_user_dev.c
+index 811b95c45..426682c93 100644
+--- a/drivers/net/virtio/virtio_user/virtio_user_dev.c
++++ b/drivers/net/virtio/virtio_user/virtio_user_dev.c
+@@ -475,17 +475,14 @@ virtio_user_dev_init(struct virtio_user_dev *dev, char *path, int queues,
+ 					  "packed virtqueues\n");
+ 			return -1;
+ 		}
+-		dev->device_features |= (1ull << VIRTIO_F_RING_PACKED);
+ 	} else {
+-		dev->device_features &= ~(1ull << VIRTIO_F_RING_PACKED);
++		dev->unsupported_features |= (1ull << VIRTIO_F_RING_PACKED);
+ 	}
+ 
+-	if (dev->mac_specified) {
+-		dev->device_features |= (1ull << VIRTIO_NET_F_MAC);
+-	} else {
+-		dev->device_features &= ~(1ull << VIRTIO_NET_F_MAC);
++	if (dev->mac_specified)
++		dev->frontend_features |= (1ull << VIRTIO_NET_F_MAC);
++	else
+ 		dev->unsupported_features |= (1ull << VIRTIO_NET_F_MAC);
+-	}
+ 
+ 	if (cq) {
+ 		/* device does not really need to know anything about CQ,
+diff --git a/drivers/net/virtio/virtio_user_ethdev.c b/drivers/net/virtio/virtio_user_ethdev.c
+index daad8f452..a2911febf 100644
+--- a/drivers/net/virtio/virtio_user_ethdev.c
++++ b/drivers/net/virtio/virtio_user_ethdev.c
+@@ -361,7 +361,7 @@ static const char *valid_args[] = {
+ 	VIRTIO_USER_ARG_MRG_RXBUF,
+ #define VIRTIO_USER_ARG_IN_ORDER       "in_order"
+ 	VIRTIO_USER_ARG_IN_ORDER,
+-#define VIRTIO_USER_ARG_PACKED_VQ "packed_vq"
++#define VIRTIO_USER_ARG_PACKED_VQ      "packed_vq"
+ 	VIRTIO_USER_ARG_PACKED_VQ,
+ 	NULL
+ };
+@@ -466,11 +466,11 @@ virtio_user_pmd_probe(struct rte_vdev_device *dev)
+ 	uint64_t server_mode = VIRTIO_USER_DEF_SERVER_MODE;
+ 	uint64_t mrg_rxbuf = 1;
+ 	uint64_t in_order = 1;
++	uint64_t packed_vq = 0;
+ 	char *path = NULL;
+ 	char *ifname = NULL;
+ 	char *mac_addr = NULL;
+ 	int ret = -1;
+-	uint64_t packed_vq = 0;
+ 
+ 	if (rte_eal_process_type() == RTE_PROC_SECONDARY) {
+ 		const char *name = rte_vdev_device_name(dev);
+@@ -698,4 +698,5 @@ RTE_PMD_REGISTER_PARAM_STRING(net_virtio_user,
+ 	"iface=<string> "
+ 	"server=<0|1> "
+ 	"mrg_rxbuf=<0|1> "
+-	"in_order=<0|1>");
++	"in_order=<0|1> "
++	"packed_vq=<0|1>");
+-- 
+2.21.0
+

@@ -1,0 +1,45 @@
+From d1b8c268219498c865511b375b0c0c89244046f9 Mon Sep 17 00:00:00 2001
+From: Jens Freimann <jfreimann@redhat.com>
+Date: Mon, 17 Dec 2018 22:31:39 +0100
+Subject: [PATCH 10/18] net/virtio: enable packed virtqueues by default
+
+[ upstream commit aea29aa5d37b40080cfc1f9a1acba239bf03922f ]
+
+Signed-off-by: Jens Freimann <jfreimann@redhat.com>
+Reviewed-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+(cherry picked from commit aea29aa5d37b40080cfc1f9a1acba239bf03922f)
+Signed-off-by: Jens Freimann <jfreimann@redhat.com>
+---
+ drivers/net/virtio/virtio_ethdev.h               | 1 +
+ drivers/net/virtio/virtio_user/virtio_user_dev.c | 3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/virtio/virtio_ethdev.h b/drivers/net/virtio/virtio_ethdev.h
+index 88b8c42a3..364ecbb50 100644
+--- a/drivers/net/virtio/virtio_ethdev.h
++++ b/drivers/net/virtio/virtio_ethdev.h
+@@ -34,6 +34,7 @@
+ 	 1u << VIRTIO_RING_F_INDIRECT_DESC |    \
+ 	 1ULL << VIRTIO_F_VERSION_1       |	\
+ 	 1ULL << VIRTIO_F_IN_ORDER        |	\
++	 1ULL << VIRTIO_F_RING_PACKED	  |	\
+ 	 1ULL << VIRTIO_F_IOMMU_PLATFORM)
+ 
+ #define VIRTIO_PMD_SUPPORTED_GUEST_FEATURES	\
+diff --git a/drivers/net/virtio/virtio_user/virtio_user_dev.c b/drivers/net/virtio/virtio_user/virtio_user_dev.c
+index 2f75091d5..5999b7d9d 100644
+--- a/drivers/net/virtio/virtio_user/virtio_user_dev.c
++++ b/drivers/net/virtio/virtio_user/virtio_user_dev.c
+@@ -410,7 +410,8 @@ virtio_user_dev_setup(struct virtio_user_dev *dev)
+ 	 1ULL << VIRTIO_NET_F_GUEST_TSO6	|	\
+ 	 1ULL << VIRTIO_F_IN_ORDER		|	\
+ 	 1ULL << VIRTIO_F_VERSION_1		|	\
+-	 1ULL << VIRTIO_F_RING_PACKED)
++	 1ULL << VIRTIO_F_RING_PACKED		|	\
++	 1ULL << VIRTIO_RING_F_EVENT_IDX)
+ 
+ int
+ virtio_user_dev_init(struct virtio_user_dev *dev, char *path, int queues,
+-- 
+2.21.0
+
