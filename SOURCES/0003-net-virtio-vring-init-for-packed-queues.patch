@@ -1,0 +1,175 @@
+From 4e832cad1879f87a694e2f78b8718f986f7c76e2 Mon Sep 17 00:00:00 2001
+From: Jens Freimann <jfreimann@redhat.com>
+Date: Mon, 17 Dec 2018 22:31:32 +0100
+Subject: [PATCH 03/18] net/virtio: vring init for packed queues
+
+[ upstream commit f803734b0f2e6c556d9bf7fe8f11638429e3a00f ]
+
+Add and initialize descriptor data structures.
+
+Signed-off-by: Jens Freimann <jfreimann@redhat.com>
+Signed-off-by: Tiwei Bie <tiwei.bie@intel.com>
+Reviewed-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+(cherry picked from commit f803734b0f2e6c556d9bf7fe8f11638429e3a00f)
+Signed-off-by: Jens Freimann <jfreimann@redhat.com>
+---
+ drivers/net/virtio/virtio_ethdev.c | 32 ++++++++++++++++++++----------
+ drivers/net/virtio/virtio_ring.h   | 28 ++++++++++++++++++++++----
+ drivers/net/virtio/virtqueue.h     |  2 +-
+ 3 files changed, 46 insertions(+), 16 deletions(-)
+
+diff --git a/drivers/net/virtio/virtio_ethdev.c b/drivers/net/virtio/virtio_ethdev.c
+index 2ba66d291..ee52e3cdb 100644
+--- a/drivers/net/virtio/virtio_ethdev.c
++++ b/drivers/net/virtio/virtio_ethdev.c
+@@ -299,20 +299,22 @@ virtio_init_vring(struct virtqueue *vq)
+ 
+ 	PMD_INIT_FUNC_TRACE();
+ 
+-	/*
+-	 * Reinitialise since virtio port might have been stopped and restarted
+-	 */
+ 	memset(ring_mem, 0, vq->vq_ring_size);
+-	vring_init(vr, size, ring_mem, VIRTIO_PCI_VRING_ALIGN);
++
+ 	vq->vq_used_cons_idx = 0;
+ 	vq->vq_desc_head_idx = 0;
+ 	vq->vq_avail_idx = 0;
+ 	vq->vq_desc_tail_idx = (uint16_t)(vq->vq_nentries - 1);
+ 	vq->vq_free_cnt = vq->vq_nentries;
+ 	memset(vq->vq_descx, 0, sizeof(struct vq_desc_extra) * vq->vq_nentries);
+-
+-	vring_desc_init(vr->desc, size);
+-
++	if (vtpci_packed_queue(vq->hw)) {
++		vring_init_packed(&vq->ring_packed, ring_mem,
++				  VIRTIO_PCI_VRING_ALIGN, size);
++		vring_desc_init_packed(vq, size);
++	} else {
++		vring_init_split(vr, ring_mem, VIRTIO_PCI_VRING_ALIGN, size);
++		vring_desc_init_split(vr->desc, size);
++	}
+ 	/*
+ 	 * Disable device(host) interrupting guest
+ 	 */
+@@ -382,11 +384,16 @@ virtio_init_queue(struct rte_eth_dev *dev, uint16_t vtpci_queue_idx)
+ 	vq->hw = hw;
+ 	vq->vq_queue_index = vtpci_queue_idx;
+ 	vq->vq_nentries = vq_size;
++	vq->event_flags_shadow = 0;
++	if (vtpci_packed_queue(hw)) {
++		vq->avail_wrap_counter = 1;
++		vq->used_wrap_counter = 1;
++	}
+ 
+ 	/*
+ 	 * Reserve a memzone for vring elements
+ 	 */
+-	size = vring_size(vq_size, VIRTIO_PCI_VRING_ALIGN);
++	size = vring_size(hw, vq_size, VIRTIO_PCI_VRING_ALIGN);
+ 	vq->vq_ring_size = RTE_ALIGN_CEIL(size, VIRTIO_PCI_VRING_ALIGN);
+ 	PMD_INIT_LOG(DEBUG, "vring_size: %d, rounded_vring_size: %d",
+ 		     size, vq->vq_ring_size);
+@@ -489,7 +496,8 @@ virtio_init_queue(struct rte_eth_dev *dev, uint16_t vtpci_queue_idx)
+ 		for (i = 0; i < vq_size; i++) {
+ 			struct vring_desc *start_dp = txr[i].tx_indir;
+ 
+-			vring_desc_init(start_dp, RTE_DIM(txr[i].tx_indir));
++			vring_desc_init_split(start_dp,
++					      RTE_DIM(txr[i].tx_indir));
+ 
+ 			/* first indirect descriptor is always the tx header */
+ 			start_dp->addr = txvq->virtio_net_hdr_mem
+@@ -1486,7 +1494,8 @@ virtio_init_device(struct rte_eth_dev *eth_dev, uint64_t req_features)
+ 
+ 	/* Setting up rx_header size for the device */
+ 	if (vtpci_with_feature(hw, VIRTIO_NET_F_MRG_RXBUF) ||
+-	    vtpci_with_feature(hw, VIRTIO_F_VERSION_1))
++	    vtpci_with_feature(hw, VIRTIO_F_VERSION_1) ||
++	    vtpci_with_feature(hw, VIRTIO_F_RING_PACKED))
+ 		hw->vtnet_hdr_size = sizeof(struct virtio_net_hdr_mrg_rxbuf);
+ 	else
+ 		hw->vtnet_hdr_size = sizeof(struct virtio_net_hdr);
+@@ -1906,7 +1915,8 @@ virtio_dev_configure(struct rte_eth_dev *dev)
+ 
+ 	if (vtpci_with_feature(hw, VIRTIO_F_IN_ORDER)) {
+ 		hw->use_inorder_tx = 1;
+-		if (vtpci_with_feature(hw, VIRTIO_NET_F_MRG_RXBUF)) {
++		if (vtpci_with_feature(hw, VIRTIO_NET_F_MRG_RXBUF) &&
++		    !vtpci_packed_queue(hw)) {
+ 			hw->use_inorder_rx = 1;
+ 			hw->use_simple_rx = 0;
+ 		} else {
+diff --git a/drivers/net/virtio/virtio_ring.h b/drivers/net/virtio/virtio_ring.h
+index 464449074..1760823c6 100644
+--- a/drivers/net/virtio/virtio_ring.h
++++ b/drivers/net/virtio/virtio_ring.h
+@@ -125,10 +125,18 @@ struct vring {
+ #define vring_avail_event(vr) (*(uint16_t *)&(vr)->used->ring[(vr)->num])
+ 
+ static inline size_t
+-vring_size(unsigned int num, unsigned long align)
++vring_size(struct virtio_hw *hw, unsigned int num, unsigned long align)
+ {
+ 	size_t size;
+ 
++	if (vtpci_packed_queue(hw)) {
++		size = num * sizeof(struct vring_packed_desc);
++		size += sizeof(struct vring_packed_desc_event);
++		size = RTE_ALIGN_CEIL(size, align);
++		size += sizeof(struct vring_packed_desc_event);
++		return size;
++	}
++
+ 	size = num * sizeof(struct vring_desc);
+ 	size += sizeof(struct vring_avail) + (num * sizeof(uint16_t));
+ 	size = RTE_ALIGN_CEIL(size, align);
+@@ -136,10 +144,9 @@ vring_size(unsigned int num, unsigned long align)
+ 		(num * sizeof(struct vring_used_elem));
+ 	return size;
+ }
+-
+ static inline void
+-vring_init(struct vring *vr, unsigned int num, uint8_t *p,
+-	unsigned long align)
++vring_init_split(struct vring *vr, uint8_t *p, unsigned long align,
++	 unsigned int num)
+ {
+ 	vr->num = num;
+ 	vr->desc = (struct vring_desc *) p;
+@@ -149,6 +156,19 @@ vring_init(struct vring *vr, unsigned int num, uint8_t *p,
+ 		RTE_ALIGN_CEIL((uintptr_t)(&vr->avail->ring[num]), align);
+ }
+ 
++static inline void
++vring_init_packed(struct vring_packed *vr, uint8_t *p, unsigned long align,
++		 unsigned int num)
++{
++	vr->num = num;
++	vr->desc_packed = (struct vring_packed_desc *)p;
++	vr->driver_event = (struct vring_packed_desc_event *)(p +
++			vr->num * sizeof(struct vring_packed_desc));
++	vr->device_event = (struct vring_packed_desc_event *)
++		RTE_ALIGN_CEIL((uintptr_t)(vr->driver_event +
++				sizeof(struct vring_packed_desc_event)), align);
++}
++
+ /*
+  * The following is used with VIRTIO_RING_F_EVENT_IDX.
+  * Assuming a given event_idx value from the other size, if we have
+diff --git a/drivers/net/virtio/virtqueue.h b/drivers/net/virtio/virtqueue.h
+index c32812427..d08ef9112 100644
+--- a/drivers/net/virtio/virtqueue.h
++++ b/drivers/net/virtio/virtqueue.h
+@@ -278,7 +278,7 @@ vring_desc_init_packed(struct virtqueue *vq, int n)
+ 
+ /* Chain all the descriptors in the ring with an END */
+ static inline void
+-vring_desc_init(struct vring_desc *dp, uint16_t n)
++vring_desc_init_split(struct vring_desc *dp, uint16_t n)
+ {
+ 	uint16_t i;
+ 
+-- 
+2.21.0
+

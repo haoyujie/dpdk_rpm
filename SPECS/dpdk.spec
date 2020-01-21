@@ -8,10 +8,10 @@
 #% define date 20181127
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 18.11
+%define ver 18.11.2
 %define rel 3
 
-%define srcname dpdk
+%define srcname dpdk-stable
 
 Name: dpdk
 Version: %{ver}
@@ -37,9 +37,32 @@ Source505: ppc_64-power8-linuxapp-gcc-config
 Source506: x86_64-native-linuxapp-gcc-config
 
 # Patches only in dpdk package
-Patch0: 0001-bus-vmbus-fix-race-in-subchannel-creation.patch
-Patch1: 0002-net-netvsc-enable-SR-IOV.patch
-Patch2: 0003-net-netvsc-disable-multi-queue-on-older-servers.patch
+
+
+# Bug 1525039
+Patch10: 0001-net-virtio-allocate-vrings-on-device-NUMA-node.patch
+
+# Bug 1700373
+Patch11: 0001-net-virtio-add-packed-virtqueue-defines.patch
+Patch12: 0002-net-virtio-add-packed-virtqueue-helpers.patch
+Patch13: 0003-net-virtio-vring-init-for-packed-queues.patch
+Patch14: 0004-net-virtio-dump-packed-virtqueue-data.patch
+Patch15: 0005-net-virtio-implement-Tx-path-for-packed-queues.patch
+Patch16: 0006-net-virtio-implement-Rx-path-for-packed-queues.patch
+Patch17: 0007-net-virtio-support-packed-queue-in-send-command.patch
+Patch18: 0008-net-virtio-user-add-option-to-use-packed-queues.patch
+Patch19: 0009-net-virtio-user-fail-if-cq-used-with-packed-vq.patch
+Patch20: 0010-net-virtio-enable-packed-virtqueues-by-default.patch
+Patch21: 0011-net-virtio-avoid-double-accounting-of-bytes.patch
+Patch22: 0012-net-virtio-user-fix-packed-vq-option-parsing.patch
+Patch23: 0013-net-virtio-user-fix-supported-features-list.patch
+Patch24: 0014-net-virtio-check-head-desc-with-correct-wrap-counter.patch
+Patch25: 0015-net-virtio-user-support-control-VQ-for-packed.patch
+Patch26: 0016-net-virtio-fix-control-VQ.patch
+Patch27: 0017-net-virtio-user-fix-control-VQ.patch
+Patch28: 0018-vhost-batch-used-descs-chains-write-back-with-packed.patch
+Patch29: 0019-net-virtio-fix-interrupt-helper-for-packed-ring.patch
+Patch30: 0020-net-virtio-fix-calculation-of-device_event-ptr.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -151,7 +174,20 @@ unset RTE_SDK RTE_INCLUDE RTE_TARGET
 # Avoid appending second -Wall to everything, it breaks upstream warning
 # disablers in makefiles. Strip expclit -march= from optflags since they
 # will only guarantee build failures, DPDK is picky with that.
-export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:alnum:]]* ::g') -Wformat -fPIC"
+# Note: _hardening_ldflags has to go on the extra cflags line because dpdk is
+# astoundingly convoluted in how it processes its linker flags.  Fixing it in
+# dpdk is the preferred solution, but adjusting to allow a gcc option in the
+# ldflags, even when gcc is used as the linker, requires large tree-wide changes
+touch obj.o
+gcc -### obj.o 2>&1 | awk '/.*collect2.*/ { print $0}' | sed -e 's/\S*\.res\S*//g' -e 's/-z \S*//g' -e 's/[^ ]*\.o//g' -e 's/ /\n/g' | sort -u > ./noopts.txt
+gcc -### $RPM_LD_FLAGS obj.o 2>&1 | awk '/.*collect2.*/ {print $0}' | sed -e 's/\S*\.res\S*//g' -e 's/-z \S*//g' -e 's/[^ ]*\.o//g' -e 's/ /\n/g' | sort -u > ./opts.txt
+EXTRA_RPM_LDFLAGS=$(comm -13 ./noopts.txt ./opts.txt)
+rm -f obj.o
+
+export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:alnum:]]* ::g') -Wformat -fPIC %{_hardening_ldflags}"
+export EXTRA_LDFLAGS=$(echo %{__global_ldflags} | sed -e's/-Wl,//g' -e's/-spec.*//')
+export HOST_EXTRA_CFLAGS="$EXTRA_CFLAGS $EXTRA_RPM_LDFLAGS"
+export EXTRA_HOST_LDFLAGS=$(echo %{__global_ldflags} | sed -e's/-spec.*//')
 
 # DPDK defaults to using builder-specific compiler flags.  However,
 # the config has been changed by specifying CONFIG_RTE_MACHINE=default
@@ -287,6 +323,32 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Mon Sep 16 2019 Jens Freimann <jfreimann@redhat.com> - 18.11.2-3
+- Add fix for wrong pointer calculation to fix Covscan issue
+- https://cov01.lab.eng.brq.redhat.com/covscanhub/task/135452/log/added.html
+
+* Wed Aug 14 2019 Jens Freimann <jfreimann@redhat.com> - 18.11.2-2
+- Backport "net/virtio: allocate vrings on device NUMA node" (#1700373)
+
+* Thu Jun 27 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11.2-1
+- Updated to DPDK 18.11.2 (#1713704)
+
+* Fri May 24 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11.8
+- Backport "net/virtio: allocate vrings on device NUMA node" (#1525039)
+
+* Thu May 23 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11-7
+- Really use the security cflags (copied from Fedora RPM) (#1703985)
+
+* Fri May 17 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11-6
+- Fix basic CI gating test (#1682308)
+- Add manual gating test (#1682308)
+
+* Tue Mar 26 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11-5
+- Add basic CI gating test (#1682308)
+
+* Mon Feb 18 2019 Jens Freimann <jfreiman@redhat.com> - 18.11-4
+- Set correct offload flags for virtio and allow jumbo frames (#1676646)
+
 * Mon Feb 18 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11.3
 - Backport NETVSC pmd fixes (#1676534)
 

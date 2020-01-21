@@ -1,0 +1,42 @@
+From daa23dec25e8e418cd4e921531c82b5aae39b362 Mon Sep 17 00:00:00 2001
+From: Tiwei Bie <tiwei.bie@intel.com>
+Date: Tue, 19 Mar 2019 14:43:04 +0800
+Subject: [PATCH] net/virtio: fix interrupt helper for packed ring
+
+When disabling interrupt, the shadow event flags should also be
+updated accordingly. The unnecessary wmb is also dropped.
+
+Fixes: e9f4feb7e622 ("net/virtio: add packed virtqueue helpers")
+Cc: stable@dpdk.org
+
+Signed-off-by: Tiwei Bie <tiwei.bie@intel.com>
+Reviewed-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+---
+ drivers/net/virtio/virtqueue.h | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/net/virtio/virtqueue.h b/drivers/net/virtio/virtqueue.h
+index 9e74b7bd0..c9f1c0afa 100644
+--- a/drivers/net/virtio/virtqueue.h
++++ b/drivers/net/virtio/virtqueue.h
+@@ -296,12 +296,13 @@ vring_desc_init_split(struct vring_desc *dp, uint16_t n)
+ static inline void
+ virtqueue_disable_intr_packed(struct virtqueue *vq)
+ {
+-	uint16_t *event_flags = &vq->ring_packed.driver_event->desc_event_flags;
+-
+-	*event_flags = RING_EVENT_FLAGS_DISABLE;
++	if (vq->event_flags_shadow != RING_EVENT_FLAGS_DISABLE) {
++		vq->event_flags_shadow = RING_EVENT_FLAGS_DISABLE;
++		vq->ring_packed.driver_event->desc_event_flags =
++			vq->event_flags_shadow;
++	}
+ }
+ 
+-
+ /**
+  * Tell the backend not to interrupt us.
+  */
+-- 
+2.21.0
+
