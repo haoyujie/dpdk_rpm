@@ -8,7 +8,7 @@
 #% define date 20181127
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 18.11.2
+%define ver 18.11.5
 %define rel 1
 
 %define srcname dpdk-stable
@@ -278,6 +278,9 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Fri Dec 20 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11.5-1
+- Updated to DPDK 18.11.5 that includes the fixes for CVE-2019-14818 (#1777135)
+
 * Thu Jun 27 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11.2-1
 - Updated to DPDK 18.11.2 (#1713704)
 
