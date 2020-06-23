@@ -8,7 +8,7 @@
 #% define date 20181127
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 18.11.5
+%define ver 18.11.8
 %define rel 1
 
 %define srcname dpdk-stable
@@ -36,8 +36,17 @@ Source504: arm64-armv8a-linuxapp-gcc-config
 Source505: ppc_64-power8-linuxapp-gcc-config
 Source506: x86_64-native-linuxapp-gcc-config
 
-# Patches only in dpdk package
+# Bug #1711739
+Patch1020: 0001-eal-compute-IOVA-mode-based-on-PA-availability.patch
+Patch1021: 0002-bus-pci-consider-only-usable-devices-for-IOVA-mode.patch
+Patch1022: 0003-eal-fix-IOVA-mode-selection-as-VA-for-PCI-drivers.patch
+Patch1023: 0004-bus-pci-always-check-IOMMU-capabilities.patch
 
+# Bug #1719644 & #1733402
+Patch1031: 0001-net-i40e-re-program-promiscuous-mode-on-VF-interface.patch
+
+# Bug #1726579
+Patch1040: 0001-vhost-add-device-op-when-notification-to-guest-is-se.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -144,7 +153,7 @@ unset RTE_SDK RTE_INCLUDE RTE_TARGET
 # Avoid appending second -Wall to everything, it breaks upstream warning
 # disablers in makefiles. Strip expclit -march= from optflags since they
 # will only guarantee build failures, DPDK is picky with that.
-export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:alnum:]]* ::g') -Wformat -fPIC"
+export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:alnum:]]* ::g') -Wformat -fPIC -fcommon"
 
 # DPDK defaults to using builder-specific compiler flags.  However,
 # the config has been changed by specifying CONFIG_RTE_MACHINE=default
@@ -278,6 +287,13 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Wed May 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 18.11.8-1
+- Updated to DPDK 18.11.8 (#1836829, #1837025)
+
+* Fri Apr 17 2020 Timothy Redaelli <tredaelli@redhat.com> - 18.11.7-1
+- Updated to DPDK 18.11.7 (#1825276)
+- Align patches with DPDK included in OVS 2.11
+
 * Fri Dec 20 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11.5-1
 - Updated to DPDK 18.11.5 that includes the fixes for CVE-2019-14818 (#1777135)
 
