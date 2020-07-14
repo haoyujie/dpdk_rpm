@@ -1,4 +1,4 @@
-# -*- cfg-sha: b3230ff5b100fb08c9fe1495536825d94c6dea184f0111320089acc1e737f454
+# -*- cfg-sha: fa840957ea3dbcff81dd55098161c11d90c3cad399b89e6089f793e7362a5c48
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright(c) 2010-2014 Intel Corporation
 # SPDX-License-Identifier: BSD-3-Clause
@@ -10,7 +10,7 @@ CONFIG_RTE_VER_PREFIX="DPDK"
 # Version information completed when this file is processed for a build
 CONFIG_RTE_VER_YEAR=19
 CONFIG_RTE_VER_MONTH=11
-CONFIG_RTE_VER_MINOR=0
+CONFIG_RTE_VER_MINOR=2
 CONFIG_RTE_VER_SUFFIX=""
 CONFIG_RTE_VER_RELEASE=99
  # RTE_EXEC_ENV values are the directories in mk/exec-env/
@@ -210,7 +210,7 @@ CONFIG_RTE_LIBRTE_IPN3KE_PMD=n
 CONFIG_RTE_LIBRTE_MLX4_PMD=y
 CONFIG_RTE_LIBRTE_MLX4_DEBUG=n
 # Compile burst-oriented Mellanox ConnectX-4, ConnectX-5,
-# ConnectX-6 & Bluefield (MLX5) PMD
+# ConnectX-6 & BlueField (MLX5) PMD
 CONFIG_RTE_LIBRTE_MLX5_PMD=y
 CONFIG_RTE_LIBRTE_MLX5_DEBUG=n
 # Linking method for mlx4/5 dependency on ibverbs and related libraries
