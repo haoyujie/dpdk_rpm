@@ -4,12 +4,12 @@
 %bcond_without tools
 
 # Dont edit Version: and Release: directly, only these:
-#% define commit0 0da7f445df445630c794897347ee360d6fe6348b
-#% define date 20181127
+#% define commit0 7001c8fdb27357c67147c0a13cb3826e48c0f2bf
+#% define date 20191128
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 18.11.2
-%define rel 3
+%define ver 19.11.2
+%define rel 1
 
 %define srcname dpdk-stable
 
@@ -38,31 +38,6 @@ Source506: x86_64-native-linuxapp-gcc-config
 
 # Patches only in dpdk package
 
-
-# Bug 1525039
-Patch10: 0001-net-virtio-allocate-vrings-on-device-NUMA-node.patch
-
-# Bug 1700373
-Patch11: 0001-net-virtio-add-packed-virtqueue-defines.patch
-Patch12: 0002-net-virtio-add-packed-virtqueue-helpers.patch
-Patch13: 0003-net-virtio-vring-init-for-packed-queues.patch
-Patch14: 0004-net-virtio-dump-packed-virtqueue-data.patch
-Patch15: 0005-net-virtio-implement-Tx-path-for-packed-queues.patch
-Patch16: 0006-net-virtio-implement-Rx-path-for-packed-queues.patch
-Patch17: 0007-net-virtio-support-packed-queue-in-send-command.patch
-Patch18: 0008-net-virtio-user-add-option-to-use-packed-queues.patch
-Patch19: 0009-net-virtio-user-fail-if-cq-used-with-packed-vq.patch
-Patch20: 0010-net-virtio-enable-packed-virtqueues-by-default.patch
-Patch21: 0011-net-virtio-avoid-double-accounting-of-bytes.patch
-Patch22: 0012-net-virtio-user-fix-packed-vq-option-parsing.patch
-Patch23: 0013-net-virtio-user-fix-supported-features-list.patch
-Patch24: 0014-net-virtio-check-head-desc-with-correct-wrap-counter.patch
-Patch25: 0015-net-virtio-user-support-control-VQ-for-packed.patch
-Patch26: 0016-net-virtio-fix-control-VQ.patch
-Patch27: 0017-net-virtio-user-fix-control-VQ.patch
-Patch28: 0018-vhost-batch-used-descs-chains-write-back-with-packed.patch
-Patch29: 0019-net-virtio-fix-interrupt-helper-for-packed-ring.patch
-Patch30: 0020-net-virtio-fix-calculation-of-device_event-ptr.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -122,7 +97,6 @@ BuildRequires: gcc, kernel-headers, zlib-devel, numactl-devel
 BuildRequires: doxygen, %{_py}-devel, %{_py}-sphinx
 %ifarch x86_64
 BuildRequires: rdma-core-devel >= 15 libmnl-devel
-%global __requires_exclude_from ^%{_libdir}/librte_pmd_mlx[45]_glue\.so.*$
 %endif
 
 %description
@@ -132,6 +106,9 @@ fast packet processing in the user space.
 %package devel
 Summary: Data Plane Development Kit development files
 Requires: %{name}%{?_isa} = %{version}-%{release}
+%ifarch x86_64
+Requires: rdma-core-devel libmnl-devel
+%endif
 
 %description devel
 This package contains the headers and other files needed for developing
@@ -187,7 +164,7 @@ rm -f obj.o
 export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:alnum:]]* ::g') -Wformat -fPIC %{_hardening_ldflags}"
 export EXTRA_LDFLAGS=$(echo %{__global_ldflags} | sed -e's/-Wl,//g' -e's/-spec.*//')
 export HOST_EXTRA_CFLAGS="$EXTRA_CFLAGS $EXTRA_RPM_LDFLAGS"
-export EXTRA_HOST_LDFLAGS=$(echo %{__global_ldflags} | sed -e's/-spec.*//')
+export EXTRA_HOST_LDFLAGS="$EXTRA_RPM_LDFLAGS $(echo %{__global_ldflags} | sed -e's/-spec.*//')"
 
 # DPDK defaults to using builder-specific compiler flags.  However,
 # the config has been changed by specifying CONFIG_RTE_MACHINE=default
@@ -200,7 +177,7 @@ make V=1 O=%{target} T=%{target} %{?_smp_mflags} config
 cp -f %{SOURCE500} %{SOURCE502} "%{_sourcedir}/%{target}-config" .
 %{SOURCE502} %{target}-config "%{target}/.config"
 
-make V=1 O=%{target} %{?_smp_mflags} 
+make V=1 O=%{target} %{?_smp_mflags}
 
 # Creating PDF's has excessive build-requirements, html docs suffice fine
 make V=1 O=%{target} %{?_smp_mflags} doc-api-html doc-guides-html
@@ -223,15 +200,6 @@ find %{buildroot}%{sdkdir}/ -name "*.py" -exec \
 mkdir -p %{buildroot}/%{pmddir}
 for f in %{buildroot}/%{_libdir}/*_pmd_*.so.*; do
     bn=$(basename ${f})
-%ifarch x86_64
-    case $bn in
-    librte_pmd_mlx[45]_glue.so.*)
-        mkdir -p %{buildroot}/%{pmddir}-glue
-        ln -s ../${bn} %{buildroot}%{pmddir}-glue/${bn}
-        continue
-        ;;
-    esac
-%endif
     ln -s ../${bn} %{buildroot}%{pmddir}/${bn}
 done
 
@@ -239,8 +207,10 @@ done
 rm -rf %{buildroot}%{sdkdir}/usertools
 rm -rf %{buildroot}%{_sbindir}/dpdk-devbind
 %endif
+rm -f %{buildroot}%{sdkdir}/usertools/dpdk-pmdinfo.py
 rm -f %{buildroot}%{sdkdir}/usertools/dpdk-setup.sh
 rm -f %{buildroot}%{sdkdir}/usertools/meson.build
+rm -f %{buildroot}%{_bindir}/dpdk-pdump
 rm -f %{buildroot}%{_bindir}/dpdk-pmdinfo
 rm -f %{buildroot}%{_bindir}/dpdk-test-crypto-perf
 rm -f %{buildroot}%{_bindir}/dpdk-test-eventdev
@@ -254,6 +224,10 @@ done
 %else
 rm -rf %{buildroot}%{sdkdir}/examples
 %endif
+
+# Due to RPM limitations delete the backwards compatibility symlinks
+rm -f %{buildroot}%{sdkdir}/mk/exec-env/bsdapp
+rm -f %{buildroot}%{sdkdir}/mk/exec-env/linuxapp
 
 # Setup RTE_SDK environment as expected by apps etc
 mkdir -p %{buildroot}/%{_sysconfdir}/profile.d
@@ -280,15 +254,9 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 # BSD
 %doc README MAINTAINERS
 %{_bindir}/testpmd
-%{_bindir}/dpdk-procinfo
-%{_bindir}/dpdk-pdump
 %dir %{pmddir}
 %{_libdir}/*.so.*
 %{pmddir}/*.so.*
-%ifarch x86_64
-%dir %{pmddir}-glue
-%{pmddir}-glue/*.so.*
-%endif
 
 %files doc
 #BSD
@@ -310,8 +278,6 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %{_libdir}/*.so
 %if %{with examples}
 %files examples
-%exclude %{_bindir}/dpdk-procinfo
-%exclude %{_bindir}/dpdk-pdump
 %{_bindir}/dpdk-*
 %doc %{sdkdir}/examples/
 %endif
@@ -323,6 +289,31 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Wed May 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.2-1
+- Rebase DPDK to 19.11.2 (#1836830, #1837024, #1837030, #1837022)
+
+* Fri Apr 17 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.1-1
+- Rebase DPDK to 19.11.1 (#1824905)
+- Remove dpdk-pmdinfo.py (#1801361)
+- Add Requires: rdma-core-devel libmnl-devel on x86_64 for dpdk-devel (#1813252)
+
+* Thu Feb 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11-4
+- Remove MLX{4,5} glue libraries since RHEL 8 ships the correct libibverbs
+  library. (#1805140)
+
+* Mon Feb 17 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11-3
+- Remove /usr/share/dpdk/mk/exec-env/{bsd,linux}app symlinks (#1773889)
+
+* Thu Feb 13 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11-2
+- Add pretrans to handle /usr/share/dpdk/mk/exec-env/{bsd,linux}app (#1773889)
+
+* Thu Nov 28 2019 David Marchand <david.marchand@redhat.com> - 19.11-1
+- Rebase to 19.11 (#1773889)
+- Remove dpdk-pdump (#1779229)
+
+* Mon Nov 04 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11.2-4
+- Pass the correct LDFLAGS to host apps (dpdk-pmdinfogen) too (#1755538)
+
 * Mon Sep 16 2019 Jens Freimann <jfreimann@redhat.com> - 18.11.2-3
 - Add fix for wrong pointer calculation to fix Covscan issue
 - https://cov01.lab.eng.brq.redhat.com/covscanhub/task/135452/log/added.html
@@ -538,7 +529,7 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 - New snapshot
 - Add spec option for enabling vhost-user instead of vhost-cuse
 - Build requires fuse-devel only with vhost-cuse
-- Add virtual provide for vhost user/cuse tracking 
+- Add virtual provide for vhost user/cuse tracking
 
 * Fri Mar 27 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2038.git91a8743e.3
 - Disable vhost-user for now to get vhost-cuse support, argh.
@@ -695,7 +686,7 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 - Remove ix86 from ExclusiveArch -- it does not build with above changes
 
 * Thu Jul 10 2014 - Neil Horman <nhorman@tuxdriver.com> - 1.7.0-1.0
-- Update source to official 1.7.0 release 
+- Update source to official 1.7.0 release
 
 * Thu Jul 03 2014 - Neil Horman <nhorman@tuxdriver.com>
 - Fixing up release numbering

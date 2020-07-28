@@ -93,9 +93,15 @@ do
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_OCTEONTX_MEMPOOL n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_DPAA_MEMPOOL n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_DPAA2_MEMPOOL n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_OCTEONTX2_MEMPOOL n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_CFGFILE n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_EFD n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_FLOW_CLASSIFY n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_RCU n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_RIB n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_FIB n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_IPSEC n
+
 
     # Disable all eventdevs
     for eventdev in $(grep _EVENTDEV= "${OUTDIR}/.config" | sed 's@=\(y\|n\)@@g')
@@ -129,7 +135,6 @@ do
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_OCTEONTX_ZIPVF n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_VHOST n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_KNI n
-    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_XENVIRT n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_NULL_CRYPTO n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_NULL n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_CRYPTO_SCHEDULER n
@@ -145,6 +150,13 @@ do
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_COMMON_DPAAX n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_CAAM_JR n
     set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_CAAM_JR_BE n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_BBDEV_NULL n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_OCTEONTX_CRYPTO n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_MEMIF n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_BBDEV_TURBO_SW n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_BBDEV_FPGA_LTE_FEC n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_OCTEONTX2_CRYPTO n
+    set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_PMD_NITROX n
 
     # whitelist of enabled PMDs
     # Soft PMDs to enable
@@ -173,6 +185,8 @@ do
     # Disable some other miscellanous items related to test apps
     set_conf "${OUTDIR}" CONFIG_RTE_TEST_BBDEV n
     set_conf "${OUTDIR}" CONFIG_RTE_APP_CRYPTO_PERF n
+    set_conf "${OUTDIR}" CONFIG_RTE_APP_COMPRESS_PERF n
+    set_conf "${OUTDIR}" CONFIG_RTE_PROC_INFO n
 
     # Disable kernel modules
     set_conf "${OUTDIR}" CONFIG_RTE_EAL_IGB_UIO n
@@ -195,9 +209,7 @@ do
         set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_BNXT_PMD y
         set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_ENIC_PMD y
         set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_MLX4_PMD y
-        set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_MLX4_DLOPEN_DEPS y
         set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_MLX5_PMD y
-        set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_MLX5_DLOPEN_DEPS y
         set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_NFP_PMD y
         set_conf "${OUTDIR}" CONFIG_RTE_LIBRTE_QEDE_PMD y
         # Sw PMD
