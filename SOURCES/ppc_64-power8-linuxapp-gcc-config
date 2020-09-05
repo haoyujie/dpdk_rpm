@@ -1,4 +1,4 @@
-# -*- cfg-sha: 46dcea384e8aae2041f0f78fedef7f7da8906ed14c1ce3812b7e02ed4f2a3baf
+# -*- cfg-sha: ed6bcdfa02f885357548558116ba4f4693048c72eb35043c2de856708c6f7257
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright (C) IBM Corporation 2014.
 # SPDX-License-Identifier: BSD-3-Clause
@@ -10,7 +10,7 @@ CONFIG_RTE_VER_PREFIX="DPDK"
 # Version information completed when this file is processed for a build
 CONFIG_RTE_VER_YEAR=19
 CONFIG_RTE_VER_MONTH=11
-CONFIG_RTE_VER_MINOR=2
+CONFIG_RTE_VER_MINOR=3
 CONFIG_RTE_VER_SUFFIX=""
 CONFIG_RTE_VER_RELEASE=99
  # RTE_EXEC_ENV values are the directories in mk/exec-env/
@@ -195,7 +195,6 @@ CONFIG_RTE_LIBRTE_ICE_PMD=n
 CONFIG_RTE_LIBRTE_ICE_DEBUG_RX=n
 CONFIG_RTE_LIBRTE_ICE_DEBUG_TX=n
 CONFIG_RTE_LIBRTE_ICE_DEBUG_TX_FREE=n
-CONFIG_RTE_LIBRTE_ICE_RX_ALLOW_BULK_ALLOC=y
 CONFIG_RTE_LIBRTE_ICE_16BYTE_RX_DESC=n
 # Compile burst-oriented IAVF PMD driver
 CONFIG_RTE_LIBRTE_IAVF_PMD=n

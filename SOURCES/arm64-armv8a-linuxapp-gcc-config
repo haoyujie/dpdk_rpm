@@ -1,4 +1,4 @@
-# -*- cfg-sha: fedc4fc78a46e35070ea61c62f51c1cb9283062b4bad46fb91f6c2eb9ec536c5
+# -*- cfg-sha: bfd08c718502ce9a9d75d102e9b680c4ecf9fb2b14b112aa45899a016d3bc7bb
 # SPDX-License-Identifier: BSD-3-Clause
 # Copyright(c) 2015 Cavium, Inc
 # SPDX-License-Identifier: BSD-3-Clause
@@ -12,7 +12,7 @@ CONFIG_RTE_VER_PREFIX="DPDK"
 # Version information completed when this file is processed for a build
 CONFIG_RTE_VER_YEAR=19
 CONFIG_RTE_VER_MONTH=11
-CONFIG_RTE_VER_MINOR=2
+CONFIG_RTE_VER_MINOR=3
 CONFIG_RTE_VER_SUFFIX=""
 CONFIG_RTE_VER_RELEASE=99
  # RTE_EXEC_ENV values are the directories in mk/exec-env/
@@ -197,7 +197,6 @@ CONFIG_RTE_LIBRTE_ICE_PMD=n
 CONFIG_RTE_LIBRTE_ICE_DEBUG_RX=n
 CONFIG_RTE_LIBRTE_ICE_DEBUG_TX=n
 CONFIG_RTE_LIBRTE_ICE_DEBUG_TX_FREE=n
-CONFIG_RTE_LIBRTE_ICE_RX_ALLOW_BULK_ALLOC=y
 CONFIG_RTE_LIBRTE_ICE_16BYTE_RX_DESC=n
 # Compile burst-oriented IAVF PMD driver
 CONFIG_RTE_LIBRTE_IAVF_PMD=n

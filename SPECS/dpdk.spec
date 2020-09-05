@@ -8,7 +8,7 @@
 #% define date 20191128
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 19.11.2
+%define ver 19.11.3
 %define rel 1
 
 %define srcname dpdk-stable
@@ -289,6 +289,9 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Thu Aug 13 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.3-1
+- Rebase DPDK to 19.11.3 (#1868708)
+
 * Wed May 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.2-1
 - Rebase DPDK to 19.11.2 (#1836830, #1837024, #1837030, #1837022)
 
