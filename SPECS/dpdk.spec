@@ -8,10 +8,10 @@
 #% define date 20191128
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 19.11
-%define rel 4
+%define ver 19.11.3
+%define rel 1
 
-%define srcname dpdk
+%define srcname dpdk-stable
 
 Name: dpdk
 Version: %{ver}
@@ -106,6 +106,9 @@ fast packet processing in the user space.
 %package devel
 Summary: Data Plane Development Kit development files
 Requires: %{name}%{?_isa} = %{version}-%{release}
+%ifarch x86_64
+Requires: rdma-core-devel libmnl-devel
+%endif
 
 %description devel
 This package contains the headers and other files needed for developing
@@ -204,6 +207,7 @@ done
 rm -rf %{buildroot}%{sdkdir}/usertools
 rm -rf %{buildroot}%{_sbindir}/dpdk-devbind
 %endif
+rm -f %{buildroot}%{sdkdir}/usertools/dpdk-pmdinfo.py
 rm -f %{buildroot}%{sdkdir}/usertools/dpdk-setup.sh
 rm -f %{buildroot}%{sdkdir}/usertools/meson.build
 rm -f %{buildroot}%{_bindir}/dpdk-pdump
@@ -285,6 +289,17 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Thu Aug 13 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.3-1
+- Rebase DPDK to 19.11.3 (#1868708)
+
+* Wed May 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.2-1
+- Rebase DPDK to 19.11.2 (#1836830, #1837024, #1837030, #1837022)
+
+* Fri Apr 17 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.1-1
+- Rebase DPDK to 19.11.1 (#1824905)
+- Remove dpdk-pmdinfo.py (#1801361)
+- Add Requires: rdma-core-devel libmnl-devel on x86_64 for dpdk-devel (#1813252)
+
 * Thu Feb 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11-4
 - Remove MLX{4,5} glue libraries since RHEL 8 ships the correct libibverbs
   library. (#1805140)
