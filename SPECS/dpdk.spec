@@ -8,10 +8,13 @@
 #% define date 20191128
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 19.11.2
-%define rel 1
+%define ver 20.11
+%define rel 3
 
-%define srcname dpdk-stable
+%define srcname dpdk
+
+%define ninjaver  1.8.2
+%define mesonver  0.49.2
 
 Name: dpdk
 Version: %{ver}
@@ -23,18 +26,15 @@ Source: http://dpdk.org/browse/dpdk/snapshot/dpdk-%{commit0}.tar.xz
 Source: http://fast.dpdk.org/rel/dpdk-%{ver}.tar.xz
 %endif
 
+%if 0%{?rhel} && 0%{?rhel} < 8
+Source1: https://github.com/ninja-build/ninja/archive/v%{ninjaver}.tar.gz#/ninja-build-%{ninjaver}.tar.gz
+Source2: https://github.com/mesonbuild/meson/releases/download/%{mesonver}/meson-%{mesonver}.tar.gz
+%else
+BuildRequires: meson
+%endif
+
 # Only needed for creating snapshot tarballs, not used in build itself
 Source100: dpdk-snapshot.sh
-
-Source500: configlib.sh
-Source501: gen_config_group.sh
-Source502: set_config.sh
-
-# Important: source503 is used as the actual copy file
-# @TODO: this causes a warning - fix it?
-Source504: arm64-armv8a-linuxapp-gcc-config
-Source505: ppc_64-power8-linuxapp-gcc-config
-Source506: x86_64-native-linuxapp-gcc-config
 
 # Patches only in dpdk package
 
@@ -54,31 +54,12 @@ License: BSD and LGPLv2 and GPLv2
 # needs extensive work to port it to other architectures.
 ExclusiveArch: x86_64 aarch64 ppc64le
 
-# machine_arch maps between rpm and dpdk arch name, often same as _target_cpu
-# machine_tmpl is the config template machine name, often "native"
-# machine is the actual machine name used in the dpdk make system
-%ifarch x86_64
-%define machine_arch x86_64
-%define machine_tmpl native
-%define machine default
-%endif
-%ifarch aarch64
-%define machine_arch arm64
-%define machine_tmpl armv8a
-%define machine armv8a
-%endif
-%ifarch ppc64le
-%define machine_arch ppc_64
-%define machine_tmpl power8
-%define machine power8
-%endif
-
-%define target %{machine_arch}-%{machine_tmpl}-linuxapp-gcc
-
 %define sdkdir  %{_datadir}/%{name}
 %define docdir  %{_docdir}/%{name}
 %define incdir  %{_includedir}/%{name}
-%define pmddir %{_libdir}/%{name}-pmds
+%define pmddir  %{_libdir}/%{name}-pmds
+
+%define venvdir %{_builddir}/venv
 
 %if 0%{?rhel} > 7 || 0%{?fedora}
 %define _py python3
@@ -95,8 +76,74 @@ Conflicts: dpdk-doc < 18.11-2
 
 BuildRequires: gcc, kernel-headers, zlib-devel, numactl-devel
 BuildRequires: doxygen, %{_py}-devel, %{_py}-sphinx
+BuildRequires: python3-devel
 %ifarch x86_64
-BuildRequires: rdma-core-devel >= 15 libmnl-devel
+BuildRequires: rdma-core-devel >= 15
+%endif
+
+# Macros taked from ninja-build and meson packages and adapted to be defined here
+# See /usr/lib/rpm/macros.d/macros.{ninja,meson}
+%if 0%{?rhel} && 0%{?rhel} < 8
+
+# RHEL-7 doesn't define _vpath_* macros yet
+%if 0%{!?_vpath_srcdir:1}
+%define _vpath_srcdir .
+%endif
+%if 0%{!?_vpath_builddir:1}
+%define _vpath_builddir %_target_platform
+%endif
+
+%define __ninja %{venvdir}/bin/ninja
+%define __ninja_common_opts -v %{?_smp_mflags}
+
+%define ninja_build \
+    %{__ninja} %{__ninja_common_opts}
+
+%define ninja_install \
+    DESTDIR=%{buildroot} %{__ninja} install %{__ninja_common_opts}
+
+%define ninja_test \
+    %{__ninja} test %{__ninja_common_opts}
+
+%define __meson %{venvdir}/bin/meson
+%define __meson_wrap_mode nodownload
+%define __meson_auto_features enabled
+
+%define meson \
+    export CFLAGS="${CFLAGS:-%__global_cflags}"       \
+    export CXXFLAGS="${CXXFLAGS:-%__global_cxxflags}" \
+    export FFLAGS="${FFLAGS:-%__global_fflags}"       \
+    export FCFLAGS="${FCFLAGS:-%__global_fcflags}"    \
+    export LDFLAGS="${LDFLAGS:-%__global_ldflags}"    \
+    %{__meson}                                    \\\
+        --buildtype=plain                         \\\
+        --prefix=%{_prefix}                       \\\
+        --libdir=%{_libdir}                       \\\
+        --libexecdir=%{_libexecdir}               \\\
+        --bindir=%{_bindir}                       \\\
+        --sbindir=%{_sbindir}                     \\\
+        --includedir=%{_includedir}               \\\
+        --datadir=%{_datadir}                     \\\
+        --mandir=%{_mandir}                       \\\
+        --infodir=%{_infodir}                     \\\
+        --localedir=%{_datadir}/locale            \\\
+        --sysconfdir=%{_sysconfdir}               \\\
+        --localstatedir=%{_localstatedir}         \\\
+        --sharedstatedir=%{_sharedstatedir}       \\\
+        --wrap-mode=%{__meson_wrap_mode}          \\\
+        --auto-features=%{__meson_auto_features}  \\\
+        %{_vpath_srcdir} %{_vpath_builddir}       \\\
+        %{nil}
+
+%define meson_build \
+    %ninja_build -C %{_vpath_builddir}
+
+%define meson_install \
+    %ninja_install -C %{_vpath_builddir}
+
+%define meson_test \
+    %ninja_test -C %{_vpath_builddir}
+
 %endif
 
 %description
@@ -107,7 +154,7 @@ fast packet processing in the user space.
 Summary: Data Plane Development Kit development files
 Requires: %{name}%{?_isa} = %{version}-%{release}
 %ifarch x86_64
-Requires: rdma-core-devel libmnl-devel
+Requires: rdma-core-devel
 %endif
 
 %description devel
@@ -142,118 +189,103 @@ as L2 and L3 forwarding.
 %endif
 
 %prep
-%autosetup -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}} -p1
+%if 0%{?rhel} && 0%{?rhel} < 8
+%setup -q -a 1 -a 2 -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
+%else
+%setup -q -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
+%endif
+%autopatch -p1
 
 %build
-# In case dpdk-devel is installed
-unset RTE_SDK RTE_INCLUDE RTE_TARGET
+%if 0%{?rhel} && 0%{?rhel} < 8
+%{__python3} -m venv --clear %{venvdir}
+pushd ninja-%{ninjaver}
+%{venvdir}/bin/python configure.py --bootstrap --with-python %{venvdir}/bin/python
+mv ninja %{venvdir}/bin
+popd
 
-# Avoid appending second -Wall to everything, it breaks upstream warning
-# disablers in makefiles. Strip expclit -march= from optflags since they
-# will only guarantee build failures, DPDK is picky with that.
-# Note: _hardening_ldflags has to go on the extra cflags line because dpdk is
-# astoundingly convoluted in how it processes its linker flags.  Fixing it in
-# dpdk is the preferred solution, but adjusting to allow a gcc option in the
-# ldflags, even when gcc is used as the linker, requires large tree-wide changes
-touch obj.o
-gcc -### obj.o 2>&1 | awk '/.*collect2.*/ { print $0}' | sed -e 's/\S*\.res\S*//g' -e 's/-z \S*//g' -e 's/[^ ]*\.o//g' -e 's/ /\n/g' | sort -u > ./noopts.txt
-gcc -### $RPM_LD_FLAGS obj.o 2>&1 | awk '/.*collect2.*/ {print $0}' | sed -e 's/\S*\.res\S*//g' -e 's/-z \S*//g' -e 's/[^ ]*\.o//g' -e 's/ /\n/g' | sort -u > ./opts.txt
-EXTRA_RPM_LDFLAGS=$(comm -13 ./noopts.txt ./opts.txt)
-rm -f obj.o
+pushd meson-%{mesonver}
+%{venvdir}/bin/python setup.py install
+popd
 
-export EXTRA_CFLAGS="$(echo %{optflags} | sed -e 's:-Wall::g' -e 's:-march=[[:alnum:]]* ::g') -Wformat -fPIC %{_hardening_ldflags}"
-export EXTRA_LDFLAGS=$(echo %{__global_ldflags} | sed -e's/-Wl,//g' -e's/-spec.*//')
-export HOST_EXTRA_CFLAGS="$EXTRA_CFLAGS $EXTRA_RPM_LDFLAGS"
-export EXTRA_HOST_LDFLAGS="$EXTRA_RPM_LDFLAGS $(echo %{__global_ldflags} | sed -e's/-spec.*//')"
-
-# DPDK defaults to using builder-specific compiler flags.  However,
-# the config has been changed by specifying CONFIG_RTE_MACHINE=default
-# in order to build for a more generic host.  NOTE: It is possible that
-# the compiler flags used still won't work for all Fedora-supported
-# machines, but runtime checks in DPDK will catch those situations.
-
-make V=1 O=%{target} T=%{target} %{?_smp_mflags} config
-
-cp -f %{SOURCE500} %{SOURCE502} "%{_sourcedir}/%{target}-config" .
-%{SOURCE502} %{target}-config "%{target}/.config"
-
-make V=1 O=%{target} %{?_smp_mflags}
-
-# Creating PDF's has excessive build-requirements, html docs suffice fine
-make V=1 O=%{target} %{?_smp_mflags} doc-api-html doc-guides-html
-
-%if %{with examples}
-make V=1 O=%{target}/examples T=%{target} %{?_smp_mflags} examples
+export PATH="%{venvdir}/bin:$PATH"
 %endif
+
+ENABLED_DRIVERS=(
+    bus/pci
+    bus/vdev
+    mempool/ring
+    net/failsafe
+    net/i40e
+    net/ring
+    net/vhost
+    net/virtio
+    net/tap
+)
+
+%ifarch x86_64
+ENABLED_DRIVERS+=(
+    bus/vmbus
+    common/iavf
+    common/mlx5
+    net/bnxt
+    net/enic
+    net/iavf
+    net/ice
+    net/mlx4
+    net/mlx5
+    net/netvsc
+    net/nfp
+    net/qede
+    net/vdev_netvsc
+)
+%endif
+
+%ifarch aarch64 x86_64
+ENABLED_DRIVERS+=(
+    net/e1000
+    net/ixgbe
+)
+%endif
+
+# Since upstream doesn't have a way
+for driver in drivers/*/*/; do
+    driver=${driver#drivers/}
+    driver=${driver%/}
+    [[ " ${ENABLED_DRIVERS[@]} " == *" $driver "* ]] || \
+        disable_drivers="${disable_drivers:+$disable_drivers,}"$driver
+done
+
+%meson --includedir=include/dpdk \
+       --default-library=shared \
+       -Ddisable_drivers="$disable_drivers" \
+       -Ddrivers_install_subdir=dpdk-pmds \
+       -Denable_docs=true \
+       -Dmachine=default \
+       -Dmax_ethports=32 \
+       -Dmax_numa_nodes=8 \
+       -Dtests=false
+%meson_build
 
 %install
-# In case dpdk-devel is installed
-unset RTE_SDK RTE_INCLUDE RTE_TARGET
-
-%make_install O=%{target} prefix=%{_usr} libdir=%{_libdir}
-
-# Replace /usr/bin/env python with the correct python binary
-find %{buildroot}%{sdkdir}/ -name "*.py" -exec \
-  sed -i -e 's|#!\s*/usr/bin/env python|#!%{_py_exec}|' {} +
-
-# Create a driver directory with symlinks to all pmds
-mkdir -p %{buildroot}/%{pmddir}
-for f in %{buildroot}/%{_libdir}/*_pmd_*.so.*; do
-    bn=$(basename ${f})
-    ln -s ../${bn} %{buildroot}%{pmddir}/${bn}
-done
-
-%if ! %{with tools}
-rm -rf %{buildroot}%{sdkdir}/usertools
-rm -rf %{buildroot}%{_sbindir}/dpdk-devbind
+%if 0%{?rhel} && 0%{?rhel} < 8
+export PATH="%{venvdir}/bin:$PATH"
 %endif
-rm -f %{buildroot}%{sdkdir}/usertools/dpdk-pmdinfo.py
-rm -f %{buildroot}%{sdkdir}/usertools/dpdk-setup.sh
-rm -f %{buildroot}%{sdkdir}/usertools/meson.build
+
+%meson_install
+
+# FIXME this file doesn't have chmod +x upstream
+chmod +x %{buildroot}%{sdkdir}/examples/pipeline/examples/vxlan_table.py
+
 rm -f %{buildroot}%{_bindir}/dpdk-pdump
-rm -f %{buildroot}%{_bindir}/dpdk-pmdinfo
-rm -f %{buildroot}%{_bindir}/dpdk-test-crypto-perf
-rm -f %{buildroot}%{_bindir}/dpdk-test-eventdev
-
-%if %{with examples}
-find %{target}/examples/ -name "*.map" | xargs rm -f
-for f in %{target}/examples/*/%{target}/app/*; do
-    bn=`basename ${f}`
-    cp -p ${f} %{buildroot}%{_bindir}/dpdk-${bn}
-done
-%else
-rm -rf %{buildroot}%{sdkdir}/examples
-%endif
-
-# Due to RPM limitations delete the backwards compatibility symlinks
-rm -f %{buildroot}%{sdkdir}/mk/exec-env/bsdapp
-rm -f %{buildroot}%{sdkdir}/mk/exec-env/linuxapp
-
-# Setup RTE_SDK environment as expected by apps etc
-mkdir -p %{buildroot}/%{_sysconfdir}/profile.d
-cat << EOF > %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk-%{_arch}.sh
-if [ -z "\${RTE_SDK}" ]; then
-    export RTE_SDK="%{sdkdir}"
-    export RTE_TARGET="%{target}"
-    export RTE_INCLUDE="%{incdir}"
-fi
-EOF
-
-cat << EOF > %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk-%{_arch}.csh
-if ( ! \$RTE_SDK ) then
-    setenv RTE_SDK "%{sdkdir}"
-    setenv RTE_TARGET "%{target}"
-    setenv RTE_INCLUDE "%{incdir}"
-endif
-EOF
-
-# Fixup target machine mismatch
-sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profile.d/dpdk-sdk*
+rm -f %{buildroot}%{_bindir}/dpdk-proc-info
+rm -f %{buildroot}%{_bindir}/dpdk-test{,-acl,-bbdev,-cmdline,-compress-perf,-crypto-perf,-eventdev,-pipeline,-sad,-fib,-flow-perf,-regex}
+rm -f %{buildroot}%{_libdir}/*.a
 
 %files
 # BSD
 %doc README MAINTAINERS
-%{_bindir}/testpmd
+%{_bindir}/dpdk-testpmd
 %dir %{pmddir}
 %{_libdir}/*.so.*
 %{pmddir}/*.so.*
@@ -269,13 +301,15 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %{incdir}/
 %{sdkdir}/
 %if %{with tools}
-%exclude %{sdkdir}/usertools/
+%exclude %{_bindir}/dpdk-*.py
 %endif
 %if %{with examples}
 %exclude %{sdkdir}/examples/
 %endif
-%{_sysconfdir}/profile.d/dpdk-sdk-*.*
 %{_libdir}/*.so
+%{pmddir}/*.so
+%{_libdir}/pkgconfig/libdpdk.pc
+%{_libdir}/pkgconfig/libdpdk-libs.pc
 %if %{with examples}
 %files examples
 %{_bindir}/dpdk-*
@@ -284,11 +318,22 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 
 %if %{with tools}
 %files tools
-%{sdkdir}/usertools/
-%{_sbindir}/dpdk-devbind
+%{_bindir}/dpdk-*.py
 %endif
 
 %changelog
+* Tue Feb 16 2021 Timothy Redaelli <tredaelli@redhat.com> - 20.11-3
+- Fix gating since on DPDK 20.11 testpmd is called dpdk-testpmd
+
+* Wed Feb 10 2021 Timothy Redaelli <tredaelli@redhat.com> - 20.11-2
+- Enable ice PMD for x86_64 (#1927179)
+
+* Tue Dec 01 2020 Timothy Redaelli <tredaelli@redhat.com> - 20.11-1
+- Rebase DPDK to 20.11 using meson build system (#1908446)
+
+* Thu Aug 13 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.3-1
+- Rebase DPDK to 19.11.3 (#1868708)
+
 * Wed May 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.2-1
 - Rebase DPDK to 19.11.2 (#1836830, #1837024, #1837030, #1837022)
 
