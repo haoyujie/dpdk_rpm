@@ -8,13 +8,10 @@
 #% define date 20191128
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 20.11
-%define rel 3
+%define ver 21.11
+%define rel 1
 
 %define srcname dpdk
-
-%define ninjaver  1.8.2
-%define mesonver  0.49.2
 
 Name: dpdk
 Version: %{ver}
@@ -24,13 +21,6 @@ URL: http://dpdk.org
 Source: http://dpdk.org/browse/dpdk/snapshot/dpdk-%{commit0}.tar.xz
 %else
 Source: http://fast.dpdk.org/rel/dpdk-%{ver}.tar.xz
-%endif
-
-%if 0%{?rhel} && 0%{?rhel} < 8
-Source1: https://github.com/ninja-build/ninja/archive/v%{ninjaver}.tar.gz#/ninja-build-%{ninjaver}.tar.gz
-Source2: https://github.com/mesonbuild/meson/releases/download/%{mesonver}/meson-%{mesonver}.tar.gz
-%else
-BuildRequires: meson
 %endif
 
 # Only needed for creating snapshot tarballs, not used in build itself
@@ -59,24 +49,21 @@ ExclusiveArch: x86_64 aarch64 ppc64le
 %define incdir  %{_includedir}/%{name}
 %define pmddir  %{_libdir}/%{name}-pmds
 
-%define venvdir %{_builddir}/venv
-
-%if 0%{?rhel} > 7 || 0%{?fedora}
-%define _py python3
-%define _py_exec %{?__python3}
-%else
-%define _py python
-%define _py_exec %{?__python2}
-%endif
-
-%if 0%{?rhel} > 7
-# Fix conflicts with README and MAINTAINERS (included in dpdk-doc < 18.11-2)
+%if 0%{?rhel} && 0%{?rhel} < 9
+# Fix conflicts with README and MAINTAINERS (included in dpdk-doc < 18.11-2),
+# this affects only RHEL8.
 Conflicts: dpdk-doc < 18.11-2
 %endif
 
-BuildRequires: gcc, kernel-headers, zlib-devel, numactl-devel
-BuildRequires: doxygen, %{_py}-devel, %{_py}-sphinx
-BuildRequires: python3-devel
+BuildRequires: meson
+%if 0%{?rhel} && 0%{?rhel} < 9
+%define pyelftoolsver 0.27
+Source1: https://github.com/eliben/pyelftools/archive/refs/tags/v%{pyelftoolsver}.tar.gz#/pyelftools-%{pyelftoolsver}.tar.gz
+%else
+BuildRequires: python3-pyelftools
+%endif
+BuildRequires: gcc, zlib-devel, numactl-devel
+BuildRequires: doxygen, python3-sphinx
 %ifarch x86_64
 BuildRequires: rdma-core-devel >= 15
 %endif
@@ -172,7 +159,7 @@ API programming documentation for the Data Plane Development Kit.
 %package tools
 Summary: Tools for setting up Data Plane Development Kit environment
 Requires: %{name} = %{version}-%{release}
-Requires: kmod pciutils findutils iproute %{_py_exec}
+Requires: kmod pciutils findutils iproute python3
 
 %description tools
 %{summary}
@@ -189,26 +176,16 @@ as L2 and L3 forwarding.
 %endif
 
 %prep
-%if 0%{?rhel} && 0%{?rhel} < 8
-%setup -q -a 1 -a 2 -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
+%if 0%{?rhel} && 0%{?rhel} < 9
+%setup -q -a 1 -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
 %else
 %setup -q -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
 %endif
 %autopatch -p1
 
 %build
-%if 0%{?rhel} && 0%{?rhel} < 8
-%{__python3} -m venv --clear %{venvdir}
-pushd ninja-%{ninjaver}
-%{venvdir}/bin/python configure.py --bootstrap --with-python %{venvdir}/bin/python
-mv ninja %{venvdir}/bin
-popd
-
-pushd meson-%{mesonver}
-%{venvdir}/bin/python setup.py install
-popd
-
-export PATH="%{venvdir}/bin:$PATH"
+%if 0%{?rhel} && 0%{?rhel} < 9
+export PYTHONPATH=$(pwd)/pyelftools-%{pyelftoolsver}
 %endif
 
 ENABLED_DRIVERS=(
@@ -225,6 +202,7 @@ ENABLED_DRIVERS=(
 
 %ifarch x86_64
 ENABLED_DRIVERS+=(
+    bus/auxiliary
     bus/vmbus
     common/iavf
     common/mlx5
@@ -248,23 +226,61 @@ ENABLED_DRIVERS+=(
 )
 %endif
 
-# Since upstream doesn't have a way
-for driver in drivers/*/*/; do
-    driver=${driver#drivers/}
-    driver=${driver%/}
-    [[ " ${ENABLED_DRIVERS[@]} " == *" $driver "* ]] || \
-        disable_drivers="${disable_drivers:+$disable_drivers,}"$driver
+for driver in ${ENABLED_DRIVERS[@]}; do
+    enable_drivers="${enable_drivers:+$enable_drivers,}"$driver
+done
+
+# As of 21.11-rc3, following libraries can be disabled:
+# optional_libs = [
+#         'bitratestats',
+#         'gpudev',
+#         'gro',
+#         'gso',
+#         'kni',
+#         'jobstats',
+#         'latencystats',
+#         'metrics',
+#         'pdump',
+#         'power',
+#         'vhost',
+# ]
+# If doing any updates, this must be aligned with:
+# https://access.redhat.com/articles/3538141
+DISABLED_LIBS=(
+    gpudev
+    kni
+    jobstats
+    power
+)
+
+for lib in "${DISABLED_LIBS[@]}"; do
+    disable_libs="${disable_libs:+$disable_libs,}"$lib
 done
 
 %meson --includedir=include/dpdk \
        --default-library=shared \
-       -Ddisable_drivers="$disable_drivers" \
+       -Ddisable_libs="$disable_libs" \
        -Ddrivers_install_subdir=dpdk-pmds \
        -Denable_docs=true \
-       -Dmachine=default \
+       -Denable_drivers="$enable_drivers" \
+       -Dplatform=generic \
        -Dmax_ethports=32 \
        -Dmax_numa_nodes=8 \
        -Dtests=false
+
+# Check drivers and libraries
+for driver in "${ENABLED_DRIVERS[@]}"; do
+	config_token=RTE_$(echo $driver | tr [a-z/] [A-Z_])
+	! grep -q $config_token */rte_build_config.h || continue
+	echo "!!! Could not find $driver in rte_build_config.h, please check dependencies. !!!"
+	false
+done
+for lib in "${DISABLED_LIBS[@]}"; do
+	config_token=RTE_LIB_$(echo $lib | tr [a-z/] [A-Z_])
+	grep -q $config_token */rte_build_config.h || continue
+	echo "!!! Found $lib in rte_build_config.h. !!!"
+	false
+done
 %meson_build
 
 %install
@@ -274,13 +290,15 @@ export PATH="%{venvdir}/bin:$PATH"
 
 %meson_install
 
-# FIXME this file doesn't have chmod +x upstream
-chmod +x %{buildroot}%{sdkdir}/examples/pipeline/examples/vxlan_table.py
-
+rm -f %{buildroot}%{_bindir}/dpdk-dumpcap
 rm -f %{buildroot}%{_bindir}/dpdk-pdump
 rm -f %{buildroot}%{_bindir}/dpdk-proc-info
 rm -f %{buildroot}%{_bindir}/dpdk-test{,-acl,-bbdev,-cmdline,-compress-perf,-crypto-perf,-eventdev,-pipeline,-sad,-fib,-flow-perf,-regex}
 rm -f %{buildroot}%{_libdir}/*.a
+# Taked from debian/rules
+rm -f %{docdir}/html/.buildinfo
+rm -f %{docdir}/html/objects.inv
+rm -rf %{docdir}/html/.doctrees
 
 %files
 # BSD
@@ -322,6 +340,9 @@ rm -f %{buildroot}%{_libdir}/*.a
 %endif
 
 %changelog
+* Tue Nov 23 2021 David Marchand <david.marchand@redhat.com> - 21.11-1
+- Rebase to 21.11 (#2029497)
+
 * Tue Feb 16 2021 Timothy Redaelli <tredaelli@redhat.com> - 20.11-3
 - Fix gating since on DPDK 20.11 testpmd is called dpdk-testpmd
 
