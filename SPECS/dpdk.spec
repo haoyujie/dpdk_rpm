@@ -1,21 +1,38 @@
-# Add option to build as static libraries (--without shared)
-%bcond_without shared
-# Add option to build without examples
+# Add option to build with examples
 %bcond_with examples
 # Add option to build without tools
 %bcond_without tools
 
-# Avoid architecture-specific name of build-dir to fix per-arch reproducibility with doxygen
-%global _vpath_builddir %{_vendor}-%{_target_os}-build
+# Dont edit Version: and Release: directly, only these:
+#% define commit0 7001c8fdb27357c67147c0a13cb3826e48c0f2bf
+#% define date 20191128
+#% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
+
+%define ver 21.11.1
+%define rel 1
+
+%define srcname dpdk%(awk -F. '{ if (NF > 2) print "-stable" }' <<<%{version})
+
+%define pyelftoolsver 0.27
 
 Name: dpdk
-Version: 20.11
-Release: 3%{?dist}
+Version: %{ver}
+Release: %{rel}%{?commit0:.%{date}git%{shortcommit0}}%{?dist}
+%if 0%{?fedora} || 0%{?rhel} > 8
 Epoch: 2
+%endif
 URL: http://dpdk.org
-Source: https://fast.dpdk.org/rel/dpdk-%{version}.tar.xz
+%if 0%{?commit0:1}
+Source: http://dpdk.org/browse/dpdk/snapshot/dpdk-%{commit0}.tar.xz
+%else
+Source: http://fast.dpdk.org/rel/dpdk-%{ver}.tar.xz
+%endif
 
-BuildRequires: meson
+# Only needed for creating snapshot tarballs, not used in build itself
+Source100: dpdk-snapshot.sh
+
+# Patches only in dpdk package
+
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -30,13 +47,29 @@ License: BSD and LGPLv2 and GPLv2
 # The DPDK is designed to optimize througput of network traffic using, among
 # other techniques, carefully crafted assembly instructions.  As such it
 # needs extensive work to port it to other architectures.
-#
-ExclusiveArch: x86_64 i686 aarch64 ppc64le
+ExclusiveArch: x86_64 aarch64 ppc64le
 
-BuildRequires: gcc
-BuildRequires: kernel-headers, libpcap-devel, doxygen, /usr/bin/sphinx-build, zlib-devel
-BuildRequires: numactl-devel
-BuildRequires: rdma-core-devel
+%define sdkdir  %{_datadir}/%{name}
+%define docdir  %{_docdir}/%{name}
+%define incdir  %{_includedir}/%{name}
+%define pmddir  %{_libdir}/%{name}-pmds
+
+%if 0%{?rhel} && 0%{?rhel} < 9
+# Fix conflicts with README and MAINTAINERS (included in dpdk-doc < 18.11-2),
+# this affects only RHEL8.
+Conflicts: dpdk-doc < 18.11-2
+%endif
+
+BuildRequires: meson
+Source1: https://github.com/eliben/pyelftools/archive/refs/tags/v%{pyelftoolsver}.tar.gz#/pyelftools-%{pyelftoolsver}.tar.gz
+%if 0%{?rhel} > 8 || 0%{?fedora}
+BuildRequires: python3-pyelftools
+%endif
+BuildRequires: gcc, zlib-devel, numactl-devel
+BuildRequires: doxygen, python3-sphinx
+%ifarch x86_64
+BuildRequires: rdma-core-devel >= 15
+%endif
 
 %description
 The Data Plane Development Kit is a set of libraries and drivers for
@@ -44,11 +77,10 @@ fast packet processing in the user space.
 
 %package devel
 Summary: Data Plane Development Kit development files
-Requires: %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release} python3
-%if ! %{with shared}
-Provides: %{name}-static = %{?epoch:%{epoch}:}%{version}-%{release}
-%endif
+Requires: %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
+%ifarch x86_64
 Requires: rdma-core-devel
+%endif
 
 %description devel
 This package contains the headers and other files needed for developing
@@ -65,7 +97,7 @@ API programming documentation for the Data Plane Development Kit.
 %package tools
 Summary: Tools for setting up Data Plane Development Kit environment
 Requires: %{name} = %{?epoch:%{epoch}:}%{version}-%{release}
-Requires: kmod pciutils findutils iproute python3-pyelftools
+Requires: kmod pciutils findutils iproute python3
 
 %description tools
 %{summary}
@@ -75,324 +107,553 @@ Requires: kmod pciutils findutils iproute python3-pyelftools
 %package examples
 Summary: Data Plane Development Kit example applications
 BuildRequires: libvirt-devel
-BuildRequires: make
 
 %description examples
 Example applications utilizing the Data Plane Development Kit, such
 as L2 and L3 forwarding.
 %endif
 
-%define sdkdir  %{_datadir}/%{name}
-%define docdir  %{_docdir}/%{name}
-%define incdir %{_includedir}/%{name}
-%define pmddir %{_libdir}/%{name}-pmds
-
-%pretrans -p <lua>
--- This is to clean up directories before links created
--- See https://fedoraproject.org/wiki/Packaging:Directory_Replacement
-
-directories = {
-    "/usr/share/dpdk/mk/exec-env/bsdapp",
-    "/usr/share/dpdk/mk/exec-env/linuxapp"
-}
-for i,path in ipairs(directories) do
-  st = posix.stat(path)
-  if st and st.type == "directory" then
-    status = os.rename(path, path .. ".rpmmoved")
-    if not status then
-      suffix = 0
-      while not status do
-        suffix = suffix + 1
-        status = os.rename(path .. ".rpmmoved", path .. ".rpmmoved." .. suffix)
-      end
-      os.rename(path, path .. ".rpmmoved")
-    end
-  end
-end
 %prep
-%setup -q -n dpdk-%{version}
+%if 0%{?rhel} && 0%{?rhel} < 9
+%setup -q -a 1 -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
+%else
+%setup -q -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
+%endif
+%autopatch -p1
 
 %build
-CFLAGS="$(echo %{optflags} -fcommon)" \
-%meson --includedir=include/dpdk \
-       -Ddrivers_install_subdir=dpdk-pmds \
-       -Denable_docs=true \
-       -Dmachine=default \
-%if %{with examples}
-       -Dexamples=all \
-%endif
-%if %{with shared}
-  --default-library=shared
-%else
-  --default-library=static
+%if 0%{?rhel} && 0%{?rhel} < 9
+export PYTHONPATH=$(pwd)/pyelftools-%{pyelftoolsver}
 %endif
 
+ENABLED_DRIVERS=(
+    bus/pci
+    bus/vdev
+    mempool/ring
+    net/failsafe
+    net/i40e
+    net/ring
+    net/vhost
+    net/virtio
+    net/tap
+)
+
+%ifarch x86_64
+ENABLED_DRIVERS+=(
+    bus/auxiliary
+    bus/vmbus
+    common/iavf
+    common/mlx5
+    net/bnxt
+    net/enic
+    net/iavf
+    net/ice
+    net/mlx4
+    net/mlx5
+    net/netvsc
+    net/nfp
+    net/qede
+    net/vdev_netvsc
+)
+%endif
+
+%ifarch aarch64 x86_64
+ENABLED_DRIVERS+=(
+    net/e1000
+    net/ixgbe
+)
+%endif
+
+for driver in ${ENABLED_DRIVERS[@]}; do
+    enable_drivers="${enable_drivers:+$enable_drivers,}"$driver
+done
+
+# As of 21.11-rc3, following libraries can be disabled:
+# optional_libs = [
+#         'bitratestats',
+#         'gpudev',
+#         'gro',
+#         'gso',
+#         'kni',
+#         'jobstats',
+#         'latencystats',
+#         'metrics',
+#         'pdump',
+#         'power',
+#         'vhost',
+# ]
+# If doing any updates, this must be aligned with:
+# https://access.redhat.com/articles/3538141
+DISABLED_LIBS=(
+    gpudev
+    kni
+    jobstats
+    power
+)
+
+for lib in "${DISABLED_LIBS[@]}"; do
+    disable_libs="${disable_libs:+$disable_libs,}"$lib
+done
+
+%meson --includedir=include/dpdk \
+       --default-library=shared \
+       -Ddisable_libs="$disable_libs" \
+       -Ddrivers_install_subdir=dpdk-pmds \
+       -Denable_docs=true \
+       -Denable_drivers="$enable_drivers" \
+       -Dplatform=generic \
+       -Dmax_ethports=32 \
+       -Dmax_numa_nodes=8 \
+       -Dtests=false
+
+# Check drivers and libraries
+for driver in "${ENABLED_DRIVERS[@]}"; do
+	config_token=RTE_$(echo $driver | tr [a-z/] [A-Z_])
+	! grep -q $config_token */rte_build_config.h || continue
+	echo "!!! Could not find $driver in rte_build_config.h, please check dependencies. !!!"
+	false
+done
+for lib in "${DISABLED_LIBS[@]}"; do
+	config_token=RTE_LIB_$(echo $lib | tr [a-z/] [A-Z_])
+	grep -q $config_token */rte_build_config.h || continue
+	echo "!!! Found $lib in rte_build_config.h. !!!"
+	false
+done
 %meson_build
 
 %install
 %meson_install
 
+rm -f %{buildroot}%{_bindir}/dpdk-dumpcap
+rm -f %{buildroot}%{_bindir}/dpdk-pdump
+rm -f %{buildroot}%{_bindir}/dpdk-proc-info
+rm -f %{buildroot}%{_bindir}/dpdk-test{,-acl,-bbdev,-cmdline,-compress-perf,-crypto-perf,-eventdev,-pipeline,-sad,-fib,-flow-perf,-regex}
+rm -f %{buildroot}%{_libdir}/*.a
+# Taked from debian/rules
+rm -f %{docdir}/html/.buildinfo
+rm -f %{docdir}/html/objects.inv
+rm -rf %{docdir}/html/.doctrees
+
 %files
 # BSD
+%doc README MAINTAINERS
 %{_bindir}/dpdk-testpmd
-%{_bindir}/dpdk-proc-info
-%if %{with shared}
+%dir %{pmddir}
 %{_libdir}/*.so.*
 %{pmddir}/*.so.*
-%endif
 
 %files doc
 #BSD
+%exclude %{docdir}/README
+%exclude %{docdir}/MAINTAINERS
 %{docdir}
 
 %files devel
 #BSD
 %{incdir}/
-%{sdkdir}
-%ghost %{sdkdir}/mk/exec-env/bsdapp
-%ghost %{sdkdir}/mk/exec-env/linuxapp
+%{sdkdir}/
 %if %{with tools}
 %exclude %{_bindir}/dpdk-*.py
 %endif
 %if %{with examples}
 %exclude %{sdkdir}/examples/
 %endif
-%if ! %{with shared}
-%{_libdir}/*.a
-%exclude %{_libdir}/*.so
-%exclude %{pmddir}/*.so
-%else
 %{_libdir}/*.so
 %{pmddir}/*.so
-%exclude %{_libdir}/*.a
-%endif
 %{_libdir}/pkgconfig/libdpdk.pc
 %{_libdir}/pkgconfig/libdpdk-libs.pc
+%if %{with examples}
+%files examples
+%{_bindir}/dpdk-*
+%doc %{sdkdir}/examples/
+%endif
 
 %if %{with tools}
 %files tools
-%{_bindir}/dpdk-pdump
-%{_bindir}/dpdk-test
-%{_bindir}/dpdk-test-*
 %{_bindir}/dpdk-*.py
 %endif
 
-%if %{with examples}
-%files examples
-%{_bindir}/dpdk_example_*
-%doc %{sdkdir}/examples
-%endif
-
 %changelog
-* Mon Aug 09 2021 Mohan Boddu <mboddu@redhat.com>
-- Rebuilt for IMA sigs, glibc 2.34, aarch64 flags
-  Related: rhbz#1991688
+* Wed Jul 13 2022 Timothy Redaelli <tredaelli@redhat.com> - 21.11.1-1
+- Rebase to 21.11.1 (#2106856)
+- Includes fix for CVE-2021-3839 (#2026642)
 
-* Thu Apr 15 2021 Mohan Boddu <mboddu@redhat.com>
-- Rebuilt for RHEL 9 BETA on Apr 15th 2021. Related: rhbz#1947937
+* Tue Nov 23 2021 David Marchand <david.marchand@redhat.com> - 21.11-1
+- Rebase to 21.11 (#2030616)
 
-* Thu Jan 21 2021 Timothy Redaelli <tredaelli@redhat.com> - 2:20.11-1
-- Update to 20.11
+* Fri Nov 19 2021 Timothy Redaelli <tredaelli@redhat.com> - 20.11.1-1
+- Rebase to 20.11.1 (#2024994)
 
-* Tue Jan 26 2021 Fedora Release Engineering <releng@fedoraproject.org> - 2:19.11.3-3
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
+* Tue Feb 16 2021 Timothy Redaelli <tredaelli@redhat.com> - 20.11-3
+- Fix gating since on DPDK 20.11 testpmd is called dpdk-testpmd
 
-* Tue Sep 01 2020 Jeff Law <law@redhat.com> - 2:19.11.3-2
-- Re-enable LTO
+* Wed Feb 10 2021 Timothy Redaelli <tredaelli@redhat.com> - 20.11-2
+- Enable ice PMD for x86_64 (#1927179)
 
-* Tue Sep 01 2020 Timothy Redaelli <tredaelli@redhat.com> - 2:19.11.3-1
-- Update to latest 19.11 LTS (bz1874499)
+* Tue Dec 01 2020 Timothy Redaelli <tredaelli@redhat.com> - 20.11-1
+- Rebase DPDK to 20.11 using meson build system (#1908446)
 
-* Mon Jul 27 2020 Fedora Release Engineering <releng@fedoraproject.org> - 2:19.11.1-7
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
+* Thu Aug 13 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.3-1
+- Rebase DPDK to 19.11.3 (#1868708)
 
-* Wed Jul 01 2020 Jeff Law <law@redhat.com> - 2:19.11.1-6
-- Disable LTO
+* Wed May 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.2-1
+- Rebase DPDK to 19.11.2 (#1836830, #1837024, #1837030, #1837022)
 
-* Tue Jun 23 2020 Timothy Redaelli <tredaelli@redhat.com> - 2:19.11.1-5
-- Fix missing Requires for dpdk-devel (bz1843590)
+* Fri Apr 17 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11.1-1
+- Rebase DPDK to 19.11.1 (#1824905)
+- Remove dpdk-pmdinfo.py (#1801361)
+- Add Requires: rdma-core-devel libmnl-devel on x86_64 for dpdk-devel (#1813252)
 
-* Thu Jun 04 2020 Neil Horman <nhorman@redhat.com> - 2:19.11.1-4
-- Fix broken buildrequires (bz1843590)
+* Thu Feb 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11-4
+- Remove MLX{4,5} glue libraries since RHEL 8 ships the correct libibverbs
+  library. (#1805140)
 
-* Thu Jun 04 2020 Neil Horman <nhorman@redhat.com> - 2:19.11.1-3
-- Enable MLX5 PMD (bz 1843590)
+* Mon Feb 17 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11-3
+- Remove /usr/share/dpdk/mk/exec-env/{bsd,linux}app symlinks (#1773889)
 
-* Thu May 07 2020 Neil Horman <nhorman@redhat.com> - 2:19.11.1-2
-- Fix error in python interpreter fixup (bz 1832416)
+* Thu Feb 13 2020 Timothy Redaelli <tredaelli@redhat.com> - 19.11-2
+- Add pretrans to handle /usr/share/dpdk/mk/exec-env/{bsd,linux}app (#1773889)
 
-* Mon Apr 06 2020 Timothy Redaelli <tredaelli@redhat.com> - 2:19.11-1
-- Update to latest 19.11 LTS (bz1821213)
+* Thu Nov 28 2019 David Marchand <david.marchand@redhat.com> - 19.11-1
+- Rebase to 19.11 (#1773889)
+- Remove dpdk-pdump (#1779229)
 
-* Fri Feb 07 2020 Timothy Redaelli <tredaelli@redhat.com> - 2:18.11.6-1
-- Update to latest 18.11 LTS (bz1800510)
-- Add -fcommon to CFLAGS as workaround in order to make it build on GCC 10
-  (bz1799289)
+* Mon Nov 04 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11.2-4
+- Pass the correct LDFLAGS to host apps (dpdk-pmdinfogen) too (#1755538)
 
-* Tue Jan 28 2020 Fedora Release Engineering <releng@fedoraproject.org> - 2:18.11.2-6
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_32_Mass_Rebuild
+* Mon Sep 16 2019 Jens Freimann <jfreimann@redhat.com> - 18.11.2-3
+- Add fix for wrong pointer calculation to fix Covscan issue
+- https://cov01.lab.eng.brq.redhat.com/covscanhub/task/135452/log/added.html
 
-* Mon Nov 04 2019 Timothy Redaelli <tredaelli@redhat.com> - 2:18.11.2-5
-- Pass the correct LDFLAGS to host apps (dpdk-pmdinfogen) too (bz1768405)
+* Wed Aug 14 2019 Jens Freimann <jfreimann@redhat.com> - 18.11.2-2
+- Backport "net/virtio: allocate vrings on device NUMA node" (#1700373)
 
-* Wed Sep 11 2019 Than Ngo <than@redhat.com> - 2:18.11.2-4
-- Fix multilib issue, different outputs on different arches
+* Thu Jun 27 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11.2-1
+- Updated to DPDK 18.11.2 (#1713704)
 
-* Mon Aug 26 2019 Neil Horman <nhorman@redhat.com> - 2:18.11.2-3
-- Fix csh syntax in dpdk-sdk-x86_64.csg (bz1742942)
+* Fri May 24 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11.8
+- Backport "net/virtio: allocate vrings on device NUMA node" (#1525039)
 
-* Wed Jul 24 2019 Fedora Release Engineering <releng@fedoraproject.org> - 2:18.11.2-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild
+* Thu May 23 2019 Timothy Redaelli <tredaelli@redhat.com> - 18.11-7
+- Really use the security cflags (copied from Fedora RPM) (#1703985)
 
-* Tue Jun 25 2019 Timothy Redaelli <tredaelli@redhat.com> - 2:18.11.2-1
-- Update to latest 18.11 LTS (bz1721056)
+* Fri May 17 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11-6
+- Fix basic CI gating test (#1682308)
+- Add manual gating test (#1682308)
 
-* Thu Feb 28 2019 Timothy Redaelli <tredaelli@redhat.com> - 2:18.11.0-1
-- Update to latest LTS release (bz1684107)
+* Tue Mar 26 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11-5
+- Add basic CI gating test (#1682308)
 
-* Wed Feb 13 2019 Neil Horman <nhorman@redhat.com> - 2:17.11.2-6
-- Fix some FTBFS errors (1674825)
+* Mon Feb 18 2019 Jens Freimann <jfreiman@redhat.com> - 18.11-4
+- Set correct offload flags for virtio and allow jumbo frames (#1676646)
 
-* Thu Jan 31 2019 Fedora Release Engineering <releng@fedoraproject.org> - 2:17.11.2-5
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_30_Mass_Rebuild
+* Mon Feb 18 2019 Maxime Coquelin <maxime.coquelin@redhat.com> - 18.11.3
+- Backport NETVSC pmd fixes (#1676534)
 
-* Tue Nov 27 2018 Neil Horman <nhorman@redhat.com> - 2:17.11.2-4
-- Add wdiff to BuildRequires
+* Tue Nov 27 2018 Timothy Redaelli <tredaelli@redhat.com> - 18.11-2
+- Remove meson.build from dpdk-tools
+- Don't install README and MAINTAINERS in dpdk-doc
 
-* Thu Sep 27 2018 Neil Horman <nhorman@tuxdriver.com> - 2:17.11.2-3
-- quiet annocheck complaints (bz1548404)
+* Tue Nov 27 2018 Timothy Redaelli <tredaelli@redhat.com> - 18.11-1
+- Updated to DPDK 18.11 (#1492326):
+  - Updated configs
+  - Added libmnl-devel BuildRequires for Mellanox
 
-* Thu Jul 12 2018 Fedora Release Engineering <releng@fedoraproject.org> - 2:17.11.2-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_29_Mass_Rebuild
+* Thu Sep 20 2018 Tomas Orsava <torsava@redhat.com> - 17.11-14
+- Require the Python interpreter directly instead of using the package name
+- Related: rhbz#1619153
 
-* Tue Apr 24 2018 Neil Horman <nhorman@redhat.com> 2:17.11.2-1
-- Update to latest 17.11 LTS (fixes bz 1571361)
+* Mon Sep 10 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-13
+- Backport "net/mlx{4,5}: Avoid stripping the glue library" (#1609659)
 
-* Tue Apr 10 2018 Timothy Redaelli <tredaelli@redhat.com> - 2:17.11.1-3
-- Fix Requires dpdk by adding epoch
+* Fri Jul 20 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-12
+- Use python3 packages on RHEL8 and Fedora
+- Remove dpdk-pmdinfo (#1494462)
+- Backport "net/mlx5: fix build with rdma-core v19"
 
-* Fri Apr 06 2018 Neil Horman <nhorman@redhat.com> 2:17.11.1-2
-- Fix aarch64 build issue
+* Thu Jun 14 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-11
+- Re-align with DPDK patches inside OVS FDP 18.06 (#1591198)
 
-* Fri Apr 06 2018 Neil Horman <nhorman@redhat.com> 2:17.11.1-1
-- Update to latest LTS release for OVS
+* Mon Jun 11 2018 Aaron Conole <aconole@redhat.com> - 17.11-10
+- Fix mlx5 memory region boundary checks (#1581230)
 
-* Fri Apr 06 2018 Timothy Redaelli <tredaelli@redhat.com> -  18.02 -6
-- Replace "/usr/bin/env python" with "/usr/bin/python3" (bz 1564215)
+* Thu Jun 07 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-9
+- Add 2 missing QEDE patches
+- Fix previous changelog date
 
-* Thu Apr 05 2018 Neil Horman <nhorman@redhat.com> - 18.02-5
-- Fix compiler flag error (bz 1548404)
-- Update spec file to switch to python3
+* Thu Jun 07 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-8
+- Align with DPDK patches inside OVS FDP 18.06
+- Enable BNXT, MLX4, MLX5, NFP and QEDE PMDs
+- Backport "net/mlx: fix rdma-core glue path with EAL plugins" (only needed on
+  DPDK package)
 
-* Wed Mar 14 2018 Neil Horman <nhorman@redhat.com>< -18.02-4
-- Fixing date in changelog below
+* Wed Jan 31 2018 Kevin Traynor <ktraynor@redhat.com> - 17.11-7
+- Backport to forbid IOVA mode if IOMMU address width too small (#1530957)
 
-* Thu Mar 08 2018 Neil Horman <nhorman@redhat.com> - 18.02-3
-- Fixing missing c/ldflags for pmdinfogen (bz 1548404)
+* Wed Jan 31 2018 Aaron Conole <aconole@redhat.com> - 17.11-6
+- Backport to protect active vhost_user rings (#1525446)
 
-* Tue Feb 27 2018 Neil Horman <nhorman@redhat.com> - 18.02-2
-- Fix rpm ldflags usage (bz 1548404)
+* Tue Jan 09 2018 Timothy Redaelli <tredaelli@redhat.com> - 17.11-5
+- Real backport of "net/virtio: fix vector Rx break caused by rxq flushing"
 
-* Mon Feb 19 2018 Neil Horman <nhorman@redhat.com> - 18.02-1
-- update to latest upstream
+* Thu Dec 14 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-4
+- Backport "net/virtio: fix vector Rx break caused by rxq flushing"
 
-* Wed Feb 07 2018 Fedora Release Engineering <releng@fedoraproject.org> - 17.11-4
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_28_Mass_Rebuild
+* Wed Dec 06 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-3
+- Enable ENIC only for x86_64
 
-* Wed Jan 03 2018 Iryna Shcherbina <ishcherb@redhat.com> - 17.11-3
-- Update Python 2 dependency declarations to new packaging standards
-  (See https://fedoraproject.org/wiki/FinalizingFedoraSwitchtoPython3)
+* Wed Dec 06 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-2
+- Re-add main package dependency from dpdk-tools
+- Add explicit python dependency to dpdk-tools
 
-* Thu Nov 30 2017 Neil Horman <nhorman@redhat.com> - 17.11-2
-- Fix dangling symlinks (bz 1519322)
-- Fix devtools->usertools conversion (bz 1519332)
-- Fix python-pyelftools requirement (bz 1519336)
+* Tue Nov 28 2017 Timothy Redaelli <tredaelli@redhat.com> - 17.11-1
+- Update to DPDK 17.11 (#1522700)
+- Use a static configuration file
+- Remove i686 from ExclusiveArch since it's not supported on RHEL7
+- Remove "--without shared" support
 
-* Thu Nov 16 2017 Neil Horman <nhorman@redhat.com> - 17.11-1
-- Update to latest upstream
+* Fri Oct 13 2017 Josh Boyer <jwboyer@redhat.com> - 16.11.2-6
+- Rebuild to pick up all arches
 
-* Wed Aug 09 2017 Neil Horman <nhorman@redhat.com> - 17.08-1
-- Update to latest upstream
+* Fri Oct 13 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11.2-5
+- Enable only supported PMDs (#1497384)
 
-* Mon Jul 31 2017 Neil Horman <nhorman@redhat.com> - 17.05-2
-- backport rte_eth_tx_done_cleanup map fix (#1476341)
+* Fri Jun 23 2017 John W. Linville <linville@redhat.com> - 16.11.2-4
+- Backport "eal/ppc: fix mmap for memory initialization"
 
-* Wed Jul 26 2017 Fedora Release Engineering <releng@fedoraproject.org> - 17.05-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_27_Mass_Rebuild
+* Fri Jun 09 2017 John W. Linville <linville@redhat.com> - 16.11.2-3
+- Enable i40e driver in PowerPC along with its altivec intrinsic support
+- Add PCI probing support for vfio-pci devices in Power8
 
-* Mon May 15 2017 Neil Horman <nhorman@redhat.com> - 17.05-1
-- Update to latest upstream
+* Thu Jun 08 2017 John W. Linville <linville@redhat.com> - 16.11.2-2
+- Enable aarch64, ppc64le (#1428587)
 
-* Fri Feb 24 2017 Neil Horman <nhorman@redhat.com> - 17-02-2
-- Add python dependency (#1426561)
+* Thu Jun 08 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11.2-1
+- Import from fdProd
+- Update to 16.11.2 (#1459333)
 
-* Wed Feb 15 2017 Fedora Release Monitoring  <release-monitoring@fedoraproject.org> - 17.02-1
-- Update to 17.02 (#1422285)
+* Wed Mar 22 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11-4
+- Avoid infinite loop while linking with libdpdk.so (#1434907)
 
-* Mon Feb 06 2017 Yaakov Selkowitz <yselkowi@redhat.com> - 16.11-2
-- Enable aarch64, ppc64le (#1419731)
+* Thu Feb 02 2017 Timothy Redaelli <tredaelli@redhat.com> - 16.11-3
+- Make driverctl a different package
 
-* Tue Nov 15 2016 Neil Horman <nhorman@redhat.com> - 16.11-1
-- Update to 16.11
+* Thu Dec 08 2016 Kevin Traynor <ktraynor@redhat.com> - 16.11-2
+- Update to DPDK 16.11 (#1335865)
 
-* Tue Aug 02 2016 Neil Horman <nhorman@redhat.com> - 16.07-1
-* Update to 16.07
+* Wed Oct 05 2016 Panu Matilainen <pmatilai@redhat.com> - 16.07-1
+- Update to DPDK 16.07 (#1383195)
+- Disable unstable bnx2x driver (#1330589)
+- Enable librte_vhost NUMA support again (#1279525)
+- Enable librte_cryptodev, its no longer considered experimental
+- Change example prefix to dpdk- for consistency with other utilities
+- Update driverctl to 0.89
 
-* Thu Apr 14 2016 Panu Matilainen <pmatilai@redhat.com> - 16.04-1
-- Update to 16.04
-- Drop all patches, they're not needed anymore
-- Drop linker script generation, its upstream now
-- Enable vhost numa support again
+* Thu Jul 21 2016 Flavio Leitner <fbl@redhat.com> - 16.04-4
+- Updated to DPDK 16.04
 
-* Wed Mar 16 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-7
-- vhost numa code causes crashes, disable until upstream fixes
-- Generalize target/machine/etc macros to enable i686 builds
+* Wed Mar 16 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-3
+- Disable librte_vhost NUMA support for now, it causes segfaults
 
-* Tue Mar 01 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-6
-- Drop no longer needed bnx2x patch, the gcc false positive has been fixed
-- Drop no longer needed -Wno-error=array-bounds from CFLAGS
-- Eliminate the need for the enic patch by eliminating second -Wall from CFLAGS
-- Disable unmaintained librte_power as per upstream recommendation
-
-* Mon Feb 15 2016 Neil Horman <nhorman@redhat.com> 2.2.0-5
-- Fix ftbfs isssue (1307431)
-
-* Wed Feb 03 2016 Fedora Release Engineering <releng@fedoraproject.org> - 2.2.0-4
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_24_Mass_Rebuild
-
-* Tue Jan 26 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-3
+* Wed Jan 27 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-2
 - Use a different quoting method to avoid messing up vim syntax highlighting
 - A string is expected as CONFIG_RTE_MACHINE value, quote it too
-
-* Mon Jan 25 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-2
 - Enable librte_vhost NUMA-awareness
 
-* Wed Jan 20 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-1
-- Update to 2.2.0
-- Establish a driver directory for automatic driver loading
+* Tue Jan 12 2016 Panu Matilainen <pmatilai@redhat.com> - 2.2.0-1
+- Update DPDK to 2.2.0 final
+- Add README and MAINTAINERS docs
+- Adopt new upstream standard installation layout, including
+  dpdk_nic_bind.py renamed to dpdk_nic_bind
 - Move the unversioned pmd symlinks from libdir -devel
+- Establish a driver directory for automatic driver loading
+- Disable CONFIG_RTE_SCHED_VECTOR, it conflicts with CONFIG_RTE_MACHINE default
+- Disable experimental cryptodev library
+- More complete dtneeded patch
 - Make option matching stricter in spec setconf
-- Spec cleanups
-- Adopt upstream standard installation layout
+- Update driverctl to 0.59
 
-* Thu Oct 22 2015 Aaron Conole <aconole@redhat.com> - 2.1.0-3
-- Include examples binaries
-- Enable the Broadcom NetXtreme II 10Gb PMD
-- Fix up linkages for the dpdk-devel package
+* Wed Dec 09 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-5
+- Fix artifacts from driverctl having different version
+- Update driverctl to 0.58
 
-* Wed Sep 30 2015 Aaron Conole <aconole@redhat.com> - 2.1.0-2
-- Re-enable the IGB, IXGBE, I40E PMDs
-- Bring the Fedora and RHEL packages more in-line.
+* Fri Nov 13 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-4
+- Add driverctl sub-package
 
-* Wed Aug 26 2015 Neil Horman <nhorman@redhat.com> - 2.1.0-1
-- Update to latest version
+* Fri Oct 23 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-3
+- Enable bnx2x pmd, which buildrequires zlib-devel
 
-* Wed Jun 17 2015 Fedora Release Engineering <rel-eng@lists.fedoraproject.org> - 2.0.0-2
-- Rebuilt for https://fedoraproject.org/wiki/Fedora_23_Mass_Rebuild
+* Mon Sep 28 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-2
+- Make lib and include available both ways in the SDK paths
 
-* Mon Apr 06 2015 Neil Horman <nhorman@redhat.com> - 2.0.0-1
-- Update to dpdk 2.0
-- converted --with shared option to --without shared option
+* Thu Sep 24 2015 Panu Matilainen <pmatilai@redhat.com> - 2.1.0-1
+- Update to dpdk 2.1.0 final
+  - Disable ABI_NEXT
+  - Rebase patches as necessary
+  - Fix build of ip_pipeline example
+  - Drop no longer needed -Wno-error=array-bounds
+  - Rename libintel_dpdk to libdpdk
+
+* Tue Aug 11 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-9
+- Drop main package dependency from dpdk-tools
+
+* Wed May 20 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-8
+- Drop eventfd-link patch, its only needed for vhost-cuse
+
+* Tue May 19 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-7
+- Drop pointless build conditional, the linker script is here to stay
+- Drop vhost-cuse build conditional, vhost-user is here to stay
+- Cleanup comments a bit
+- Enable parallel build again
+- Dont build examples by default
+
+* Thu Apr 30 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-6
+- Fix potential hang and thread issues with VFIO eventfd
+
+* Fri Apr 24 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-5
+- Fix a potential hang due to missed interrupt in vhost library
+
+* Tue Apr 21 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-4
+- Drop unused pre-2.0 era patches
+- Handle vhost-user/cuse selection automatically based on the copr repo name
+
+* Fri Apr 17 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-3
+- Dont depend on fuse when built for vhost-user support
+- Drop version from testpmd binary, we wont be parallel-installing that
+
+* Thu Apr 09 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-2
+- Remove the broken kmod stuff
+- Add a new dkms-based eventfd_link subpackage if vhost-cuse is enabled
+
+* Tue Apr 07 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-1
+- Update to 2.0 final (http://dpdk.org/doc/guides-2.0/rel_notes/index.html)
+
+* Thu Apr 02 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2086.git263333bb.2
+- Switch (back) to vhost-user, thus disabling vhost-cuse support
+- Build requires fuse-devel for now even when fuse is unused
+
+* Mon Mar 30 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2049.git2f95a470.1
+- New snapshot
+- Add spec option for enabling vhost-user instead of vhost-cuse
+- Build requires fuse-devel only with vhost-cuse
+- Add virtual provide for vhost user/cuse tracking
+
+* Fri Mar 27 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2038.git91a8743e.3
+- Disable vhost-user for now to get vhost-cuse support, argh.
+
+* Fri Mar 27 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2038.git91a8743e.2
+- Add a bunch of missing dependencies to -tools
+
+* Thu Mar 26 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2038.git91a8743e.1
+- Another day, another snapshot
+- Disable IVSHMEM support for now
+
+* Fri Mar 20 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2022.gitfe4810a0.2
+- Dont fail build for array bounds warnings for now, gcc 5 is emitting a bunch
+
+* Fri Mar 20 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.2022.gitfe4810a0.1
+- Another day, another snapshot
+- Avoid building pdf docs
+
+* Tue Mar 03 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1916.gita001589e.2
+- Add missing dependency to tools -subpackage
+
+* Tue Mar 03 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1916.gita001589e.1
+- New snapshot
+- Work around #1198009
+
+* Mon Mar 02 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1911.gitffc468ff.2
+- Optionally package tools too, some binding script is needed for many setups
+
+* Mon Mar 02 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1911.gitffc468ff.1
+- New snapshot
+- Disable kernel module build by default
+- Add patch to fix missing defines/includes for external applications
+
+* Fri Feb 27 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1906.git00c68563.1
+- New snapshot
+- Remove bogus devname module alias from eventfd-link module
+- Whack evenfd-link to honor RTE_KERNELDIR too
+
+* Thu Feb 26 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1903.gitb67578cc.3
+- Add spec option to build kernel modules too
+- Build eventfd-link module too if kernel modules enabled
+
+* Thu Feb 26 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1903.gitb67578cc.2
+- Move config changes from spec after "make config" to simplify things
+- Move config changes from dpdk-config patch to the spec
+
+* Thu Feb 19 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1717.gitd3aa5274.2
+- Fix warnings tripping up build with gcc 5, remove -Wno-error
+
+* Wed Feb 18 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1698.gitc07691ae.1
+- Move the unversioned .so links for plugins into main package
+- New snapshot
+
+* Wed Feb 18 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1695.gitc2ce3924.3
+- Fix missing symbol export for rte_eal_iopl_init()
+- Only mention libs once in the linker script
+
+* Wed Feb 18 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1695.gitc2ce3924.2
+- Fix gcc version logic to work with 5.0 too
+
+* Wed Feb 18 2015 Panu Matilainen <pmatilai@redhat.com> - 2.0.0-0.1695.gitc2ce3924.1
+- Add spec magic to easily switch between stable and snapshot versions
+- Add tarball snapshot script for reference
+- Update to pre-2.0 git snapshot
+
+* Thu Feb 12 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-15
+- Disable -Werror, this is not useful behavior for released versions
+
+* Wed Feb 11 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-14
+- Fix typo causing librte_vhost missing DT_NEEDED on fuse
+
+* Wed Feb 11 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-13
+- Fix vhost library linkage
+- Add spec option to build example applications, enable by default
+
+* Fri Feb 06 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-12
+- Enable librte_acl build
+- Enable librte_ivshmem build
+
+* Thu Feb 05 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-11
+- Drop the private libdir, not needed with versioned libs
+
+* Thu Feb 05 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-10
+- Drop symbol versioning patches, always do library version for shared
+- Add comment on the combined library thing
+
+* Wed Feb 04 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-9
+- Add missing symbol version to librte_cmdline
+
+* Tue Feb 03 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-8
+- Set soname of the shared libraries
+- Fixup typo in ld path config file name
+
+* Tue Feb 03 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-7
+- Add library versioning patches as another build option, enable by default
+
+* Tue Feb 03 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-6
+- Add our libraries to ld path & run ldconfig when using shared libs
+
+* Fri Jan 30 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-5
+- Add DT_NEEDED for external dependencies (pcap, fuse, dl, pthread)
+- Enable combined library creation, needed for OVS
+- Enable shared library creation, needed for sanity
+
+* Thu Jan 29 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-4
+- Include scripts directory in the "sdk" too
+
+* Thu Jan 29 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-3
+- Fix -Wformat clash preventing i40e driver build, enable it
+- Fix -Wall clash preventing enic driver build, enable it
+
+* Thu Jan 29 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-2
+- Enable librte_vhost, which buildrequires fuse-devel
+- Enable physical NIC drivers that build (e1000, ixgbe) for VFIO use
+
+* Thu Jan 29 2015 Panu Matilainen <pmatilai@redhat.com> - 1.8.0-1
+- Update to 1.8.0
 
 * Wed Jan 28 2015 Panu Matilainen <pmatilai@redhat.com> - 1.7.0-8
 - Always build with -fPIC
@@ -432,7 +693,7 @@ CFLAGS="$(echo %{optflags} -fcommon)" \
 - Remove ix86 from ExclusiveArch -- it does not build with above changes
 
 * Thu Jul 10 2014 - Neil Horman <nhorman@tuxdriver.com> - 1.7.0-1.0
-- Update source to official 1.7.0 release 
+- Update source to official 1.7.0 release
 
 * Thu Jul 03 2014 - Neil Horman <nhorman@tuxdriver.com>
 - Fixing up release numbering
