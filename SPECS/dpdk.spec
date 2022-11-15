@@ -8,10 +8,10 @@
 #% define date 20191128
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
-%define ver 21.11
+%define ver 21.11.2
 %define rel 1
 
-%define srcname dpdk
+%define srcname dpdk%(awk -F. '{ if (NF > 2) print "-stable" }' <<<%{version})
 
 %define pyelftoolsver 0.27
 
@@ -31,8 +31,7 @@ Source: http://fast.dpdk.org/rel/dpdk-%{ver}.tar.xz
 # Only needed for creating snapshot tarballs, not used in build itself
 Source100: dpdk-snapshot.sh
 
-# Patches only in dpdk package
-
+Patch1: 0001-vhost-fix-virtqueue-use-after-free-on-NUMA-reallocat.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -274,6 +273,14 @@ rm -rf %{docdir}/html/.doctrees
 %endif
 
 %changelog
+* Mon Sep 12 2022 Timothy Redaelli <tredaelli@redhat.com> - 21.11.2-1
+- Rebase to 21.11.2 (#2126159)
+- Includes fixes for CVE-2022-2132 (#2107173) and CVE-2022-28199 (#2123616)
+
+* Wed Jul 13 2022 Timothy Redaelli <tredaelli@redhat.com> - 21.11.1-1
+- Rebase to 21.11.1 (#2106856)
+- Includes fix for CVE-2021-3839 (#2026642)
+
 * Tue Nov 23 2021 David Marchand <david.marchand@redhat.com> - 21.11-1
 - Rebase to 21.11 (#2030616)
 

@@ -1,0 +1,34 @@
+From 8010a15523e896ca2f2436432602210cab793f87 Mon Sep 17 00:00:00 2001
+From: David Marchand <david.marchand@redhat.com>
+Date: Mon, 25 Jul 2022 22:32:03 +0200
+Subject: [PATCH] vhost: fix virtqueue use after free on NUMA reallocation
+
+[ upstream commit 0b2a2ca35037d6a5168f0832c11d9858b8ae946a ]
+
+translate_ring_addresses (via numa_realloc) may change a virtio device and
+virtio queue.
+The virtqueue object must be refreshed before accessing the lock.
+
+Fixes: 04c27cb673b9 ("vhost: fix unsafe vring addresses modifications")
+
+Signed-off-by: David Marchand <david.marchand@redhat.com>
+Reviewed-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+---
+ lib/vhost/vhost_user.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/lib/vhost/vhost_user.c b/lib/vhost/vhost_user.c
+index df780fd7d6..2b45e35d4a 100644
+--- a/lib/vhost/vhost_user.c
++++ b/lib/vhost/vhost_user.c
+@@ -2575,6 +2575,7 @@ vhost_user_iotlb_msg(struct virtio_net **pdev, struct VhostUserMsg *msg,
+ 			if (is_vring_iotlb(dev, vq, imsg)) {
+ 				rte_spinlock_lock(&vq->access_lock);
+ 				*pdev = dev = translate_ring_addresses(dev, i);
++				vq = dev->virtqueue[i];
+ 				rte_spinlock_unlock(&vq->access_lock);
+ 			}
+ 		}
+-- 
+2.37.3
+
