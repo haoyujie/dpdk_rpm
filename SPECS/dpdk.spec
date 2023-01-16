@@ -9,7 +9,7 @@
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
 %define ver 21.11
-%define rel 1
+%define rel 3
 
 %define srcname dpdk
 
@@ -26,8 +26,9 @@ Source: http://fast.dpdk.org/rel/dpdk-%{ver}.tar.xz
 # Only needed for creating snapshot tarballs, not used in build itself
 Source100: dpdk-snapshot.sh
 
-# Patches only in dpdk package
-
+# CVE-2022-2132
+Patch1: 0001-vhost-discard-too-small-descriptor-chains.patch
+Patch2: 0002-vhost-fix-header-spanned-across-more-than-two-descri.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -340,6 +341,12 @@ rm -rf %{docdir}/html/.doctrees
 %endif
 
 %changelog
+* Fri Dec 23 2022 Timothy Redaelli <tredaelli@redhat.com> - 21.11-3
+- Version bump just to be sure it's updated from dpdk-21.11-2.el8_7
+
+* Wed Oct 26 2022 Timothy Redaelli <tredaelli@redhat.com> - 21.11-2
+- Backport fixes for CVE-2022-2132 (#2107171)
+
 * Tue Nov 23 2021 David Marchand <david.marchand@redhat.com> - 21.11-1
 - Rebase to 21.11 (#2029497)
 
