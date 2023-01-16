@@ -9,7 +9,7 @@
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
 %define ver 18.11.8
-%define rel 1
+%define rel 2
 
 %define srcname dpdk-stable
 
@@ -47,6 +47,10 @@ Patch1031: 0001-net-i40e-re-program-promiscuous-mode-on-VF-interface.patch
 
 # Bug #1726579
 Patch1040: 0001-vhost-add-device-op-when-notification-to-guest-is-se.patch
+
+# CVE-2022-2132
+Patch50: 0001-vhost-discard-too-small-descriptor-chains.patch
+Patch51: 0002-vhost-fix-header-spanned-across-more-than-two-descri.patch
 
 Summary: Set of libraries and drivers for fast packet processing
 
@@ -287,6 +291,9 @@ sed -i -e 's:-%{machine_tmpl}-:-%{machine}-:g' %{buildroot}/%{_sysconfdir}/profi
 %endif
 
 %changelog
+* Wed Oct 26 2022 Timothy Redaelli <tredaelli@redhat.com> - 18.11.8-2
+- Backport fixes for CVE-2022-2132 (#2107166)
+
 * Wed May 20 2020 Timothy Redaelli <tredaelli@redhat.com> - 18.11.8-1
 - Updated to DPDK 18.11.8 (#1836829, #1837025)
 

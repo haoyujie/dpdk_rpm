@@ -1,0 +1,98 @@
+From bec1c5fe59fd82a1d932aece65c919cd46325d89 Mon Sep 17 00:00:00 2001
+From: Maxime Coquelin <maxime.coquelin@redhat.com>
+Date: Thu, 16 Jun 2022 11:35:56 +0200
+Subject: [PATCH v2 1/2] vhost: discard too small descriptor chains
+
+This patch discards descriptor chains which are smaller
+than the Virtio-net header size, and ones that are equal.
+
+Indeed, such descriptor chains sizes mean there is no
+packet data.
+
+This patch also has the advantage of requesting the exact
+packets sizes for the mbufs.
+
+CVE-2022-2132
+Fixes: 62250c1d0978 ("vhost: extract split ring handling from Rx and Tx functions")
+Cc: stable@dpdk.org
+
+Signed-off-by: Maxime Coquelin <maxime.coquelin@redhat.com>
+---
+ lib/librte_vhost/virtio_net.c | 22 ++++++++++++++--------
+ 1 file changed, 14 insertions(+), 8 deletions(-)
+
+diff --git a/lib/librte_vhost/virtio_net.c b/lib/librte_vhost/virtio_net.c
+index ebeec8fd18..7da440de28 100644
+--- a/lib/librte_vhost/virtio_net.c
++++ b/lib/librte_vhost/virtio_net.c
+@@ -1112,10 +1112,10 @@ copy_desc_to_mbuf(struct virtio_net *dev, struct vhost_virtqueue *vq,
+ 	buf_iova = buf_vec[vec_idx].buf_iova;
+ 	buf_len = buf_vec[vec_idx].buf_len;
+ 
+-	if (unlikely(buf_len < dev->vhost_hlen && nr_vec <= 1)) {
+-		error = -1;
+-		goto out;
+-	}
++	/*
++	 * The caller has checked the descriptors chain is larger than the
++	 * header size.
++	 */
+ 
+ 	if (virtio_net_with_host_offload(dev)) {
+ 		if (unlikely(buf_len < sizeof(struct virtio_net_hdr))) {
+@@ -1350,20 +1350,23 @@ virtio_dev_tx_split(struct virtio_net *dev, struct vhost_virtqueue *vq,
+ 	for (i = 0; i < count; i++) {
+ 		struct buf_vector buf_vec[BUF_VECTOR_MAX];
+ 		uint16_t head_idx;
+-		uint32_t dummy_len;
++		uint32_t buf_len;
+ 		uint16_t nr_vec = 0;
+ 		int err;
+ 
+ 		if (unlikely(fill_vec_buf_split(dev, vq,
+ 						vq->last_avail_idx + i,
+ 						&nr_vec, buf_vec,
+-						&head_idx, &dummy_len,
++						&head_idx, &buf_len,
+ 						VHOST_ACCESS_RO) < 0))
+ 			break;
+ 
+ 		if (likely(dev->dequeue_zero_copy == 0))
+ 			update_shadow_used_ring_split(vq, head_idx, 0);
+ 
++		if (unlikely(buf_len <= dev->vhost_hlen))
++			break;
++
+ 		pkts[i] = rte_pktmbuf_alloc(mbuf_pool);
+ 		if (unlikely(pkts[i] == NULL)) {
+ 			RTE_LOG(ERR, VHOST_DATA,
+@@ -1460,14 +1463,14 @@ virtio_dev_tx_packed(struct virtio_net *dev, struct vhost_virtqueue *vq,
+ 	for (i = 0; i < count; i++) {
+ 		struct buf_vector buf_vec[BUF_VECTOR_MAX];
+ 		uint16_t buf_id;
+-		uint32_t dummy_len;
++		uint32_t buf_len;
+ 		uint16_t desc_count, nr_vec = 0;
+ 		int err;
+ 
+ 		if (unlikely(fill_vec_buf_packed(dev, vq,
+ 						vq->last_avail_idx, &desc_count,
+ 						buf_vec, &nr_vec,
+-						&buf_id, &dummy_len,
++						&buf_id, &buf_len,
+ 						VHOST_ACCESS_RO) < 0))
+ 			break;
+ 
+@@ -1475,6 +1478,9 @@ virtio_dev_tx_packed(struct virtio_net *dev, struct vhost_virtqueue *vq,
+ 			update_shadow_used_ring_packed(vq, buf_id, 0,
+ 					desc_count);
+ 
++		if (unlikely(buf_len <= dev->vhost_hlen))
++			break;
++
+ 		pkts[i] = rte_pktmbuf_alloc(mbuf_pool);
+ 		if (unlikely(pkts[i] == NULL)) {
+ 			RTE_LOG(ERR, VHOST_DATA,
+-- 
+2.37.1
+
