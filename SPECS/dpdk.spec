@@ -27,10 +27,10 @@ Source: http://fast.dpdk.org/rel/dpdk-%{ver}.tar.xz
 %endif
 
 %if 0%{?rhel} && 0%{?rhel} < 8
-Source1: https://github.com/ninja-build/ninja/archive/v%{ninjaver}.tar.gz#/ninja-build-%{ninjaver}.tar.gz
-Source2: https://github.com/mesonbuild/meson/releases/download/%{mesonver}/meson-%{mesonver}.tar.gz
+# Source1: https://github.com/ninja-build/ninja/archive/v%{ninjaver}.tar.gz#/ninja-build-%{ninjaver}.tar.gz
+# Source2: https://github.com/mesonbuild/meson/releases/download/%{mesonver}/meson-%{mesonver}.tar.gz
 %else
-BuildRequires: meson
+#BuildRequires: meson
 %endif
 
 # Only needed for creating snapshot tarballs, not used in build itself
@@ -52,14 +52,14 @@ License: BSD and LGPLv2 and GPLv2
 # The DPDK is designed to optimize througput of network traffic using, among
 # other techniques, carefully crafted assembly instructions.  As such it
 # needs extensive work to port it to other architectures.
-ExclusiveArch: x86_64 aarch64 ppc64le
+ExclusiveArch: x86_64
 
 %define sdkdir  %{_datadir}/%{name}
 %define docdir  %{_docdir}/%{name}
 %define incdir  %{_includedir}/%{name}
 %define pmddir  %{_libdir}/%{name}-pmds
 
-%define venvdir %{_builddir}/venv
+%define venvdir /usr
 
 %if 0%{?rhel} > 7 || 0%{?fedora}
 %define _py python3
@@ -74,7 +74,7 @@ ExclusiveArch: x86_64 aarch64 ppc64le
 Conflicts: dpdk-doc < 18.11-2
 %endif
 
-BuildRequires: gcc, kernel-headers, zlib-devel, numactl-devel
+BuildRequires: gcc, kernel-headers, zlib-devel, numactl-devel, gcc-c++
 BuildRequires: doxygen, %{_py}-devel, %{_py}-sphinx
 BuildRequires: python3-devel
 %ifarch x86_64
@@ -189,24 +189,24 @@ as L2 and L3 forwarding.
 %endif
 
 %prep
-%if 0%{?rhel} && 0%{?rhel} < 8
-%setup -q -a 1 -a 2 -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
-%else
+# %if 0%{?rhel} && 0%{?rhel} < 8
+# %setup -q -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}} #%setup -q -a 1 -a 2 -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
+# %else
 %setup -q -n %{srcname}-%{?commit0:%{commit0}}%{!?commit0:%{ver}}
-%endif
-%autopatch -p1
+# %endif
+# %autopatch -p1
 
 %build
 %if 0%{?rhel} && 0%{?rhel} < 8
-%{__python3} -m venv --clear %{venvdir}
-pushd ninja-%{ninjaver}
-%{venvdir}/bin/python configure.py --bootstrap --with-python %{venvdir}/bin/python
-mv ninja %{venvdir}/bin
-popd
+# %{__python3} -m venv --clear %{venvdir}
+# pushd ninja-%{ninjaver}
+# %{venvdir}/bin/python configure.py --bootstrap --with-python %{venvdir}/bin/python
+# mv ninja %{venvdir}/bin
+# popd
 
-pushd meson-%{mesonver}
-%{venvdir}/bin/python setup.py install
-popd
+# pushd meson-%{mesonver}
+# %{venvdir}/bin/python setup.py install
+# popd
 
 export PATH="%{venvdir}/bin:$PATH"
 %endif
@@ -241,12 +241,12 @@ ENABLED_DRIVERS+=(
 )
 %endif
 
-%ifarch aarch64 x86_64
-ENABLED_DRIVERS+=(
-    net/e1000
-    net/ixgbe
-)
-%endif
+# %ifarch aarch64 x86_64
+# ENABLED_DRIVERS+=(
+#     net/e1000
+#     net/ixgbe
+# )
+# %endif
 
 # Since upstream doesn't have a way
 for driver in drivers/*/*/; do
@@ -260,11 +260,12 @@ done
        --default-library=shared \
        -Ddisable_drivers="$disable_drivers" \
        -Ddrivers_install_subdir=dpdk-pmds \
-       -Denable_docs=true \
+       -Denable_docs=false \
        -Dmachine=default \
        -Dmax_ethports=32 \
        -Dmax_numa_nodes=8 \
-       -Dtests=false
+       -Dtests=false \
+       -Dflexran_sdk=/opt/flexran202103/sdk/build-avx512-icc/install
 %meson_build
 
 %install
