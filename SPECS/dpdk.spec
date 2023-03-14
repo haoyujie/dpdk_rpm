@@ -110,30 +110,7 @@ BuildRequires: rdma-core-devel >= 15
 %define __meson_auto_features enabled
 
 %define meson \
-    export CFLAGS="${CFLAGS:-%__global_cflags}"       \
-    export CXXFLAGS="${CXXFLAGS:-%__global_cxxflags}" \
-    export FFLAGS="${FFLAGS:-%__global_fflags}"       \
-    export FCFLAGS="${FCFLAGS:-%__global_fcflags}"    \
-    export LDFLAGS="${LDFLAGS:-%__global_ldflags}"    \
-    %{__meson}                                    \\\
-        --buildtype=plain                         \\\
-        --prefix=%{_prefix}                       \\\
-        --libdir=%{_libdir}                       \\\
-        --libexecdir=%{_libexecdir}               \\\
-        --bindir=%{_bindir}                       \\\
-        --sbindir=%{_sbindir}                     \\\
-        --includedir=%{_includedir}               \\\
-        --datadir=%{_datadir}                     \\\
-        --mandir=%{_mandir}                       \\\
-        --infodir=%{_infodir}                     \\\
-        --localedir=%{_datadir}/locale            \\\
-        --sysconfdir=%{_sysconfdir}               \\\
-        --localstatedir=%{_localstatedir}         \\\
-        --sharedstatedir=%{_sharedstatedir}       \\\
-        --wrap-mode=%{__meson_wrap_mode}          \\\
-        --auto-features=%{__meson_auto_features}  \\\
-        %{_vpath_srcdir} %{_vpath_builddir}       \\\
-        %{nil}
+    meson x86_64-redhat-linux-gnu
 
 %define meson_build \
     %ninja_build -C %{_vpath_builddir}
@@ -209,6 +186,7 @@ as L2 and L3 forwarding.
 # popd
 
 export PATH="%{venvdir}/bin:$PATH"
+export PATH=$PATH:/opt/intel/system_studio_2019/compilers_and_libraries_2019.3.206/linux/bin/intel64/
 %endif
 
 ENABLED_DRIVERS=(
