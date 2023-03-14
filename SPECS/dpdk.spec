@@ -155,15 +155,15 @@ Requires: kmod pciutils findutils iproute %{_py_exec}
 %{summary}
 %endif
 
-%if %{with examples}
-%package examples
-Summary: Data Plane Development Kit example applications
-BuildRequires: libvirt-devel
+# %if %{with examples}
+# %package examples
+# Summary: Data Plane Development Kit example applications
+# BuildRequires: libvirt-devel
 
-%description examples
-Example applications utilizing the Data Plane Development Kit, such
-as L2 and L3 forwarding.
-%endif
+# %description examples
+# Example applications utilizing the Data Plane Development Kit, such
+# as L2 and L3 forwarding.
+# %endif
 
 %prep
 # %if 0%{?rhel} && 0%{?rhel} < 8
@@ -255,7 +255,7 @@ export PATH="%{venvdir}/bin:$PATH"
 %meson_install
 
 # FIXME this file doesn't have chmod +x upstream
-chmod +x %{buildroot}%{sdkdir}/examples/pipeline/examples/vxlan_table.py
+# chmod +x %{buildroot}%{sdkdir}/examples/pipeline/examples/vxlan_table.py
 
 rm -f %{buildroot}%{_bindir}/dpdk-pdump
 rm -f %{buildroot}%{_bindir}/dpdk-proc-info
@@ -283,18 +283,18 @@ rm -f %{buildroot}%{_libdir}/*.a
 %if %{with tools}
 %exclude %{_bindir}/dpdk-*.py
 %endif
-%if %{with examples}
-%exclude %{sdkdir}/examples/
-%endif
+# %if %{with examples}
+# %exclude %{sdkdir}/examples/
+# %endif
 %{_libdir}/*.so
 %{pmddir}/*.so
 %{_libdir}/pkgconfig/libdpdk.pc
 %{_libdir}/pkgconfig/libdpdk-libs.pc
-%if %{with examples}
-%files examples
-%{_bindir}/dpdk-*
-%doc %{sdkdir}/examples/
-%endif
+# %if %{with examples}
+# %files examples
+# %{_bindir}/dpdk-*
+# %doc %{sdkdir}/examples/
+# %endif
 
 %if %{with tools}
 %files tools
