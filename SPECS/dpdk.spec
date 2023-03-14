@@ -189,6 +189,8 @@ export PATH="%{venvdir}/bin:$PATH"
 export PATH=$PATH:/opt/intel/system_studio_2019/compilers_and_libraries_2019.3.206/linux/bin/intel64/
 %endif
 
+# cd /opt/flexran202103 && source ./set_env_var.sh -d ; cd -
+
 ENABLED_DRIVERS=(
     bus/pci
     bus/vdev
@@ -239,7 +241,6 @@ done
        -Ddisable_drivers="$disable_drivers" \
        -Ddrivers_install_subdir=dpdk-pmds \
        -Denable_docs=false \
-       -Dmachine=default \
        -Dmax_ethports=32 \
        -Dmax_numa_nodes=8 \
        -Dtests=false \
