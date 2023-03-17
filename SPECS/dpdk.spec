@@ -11,7 +11,7 @@
 #% define shortcommit0 %(c=%{commit0}; echo ${c:0:7})
 
 %define ver 20.11
-%define rel 3
+%define rel 0
 
 %define srcname dpdk
 
@@ -114,7 +114,6 @@ BuildRequires: rdma-core-devel >= 15
 
 %define meson \
     %{__meson}                                    \\\
-        --buildtype=plain                         \\\
         --prefix=%{_prefix}                       \\\
         --libdir=%{_libdir}                       \\\
         --libexecdir=%{_libexecdir}               \\\
@@ -210,9 +209,9 @@ as L2 and L3 forwarding.
 export PATH="%{venvdir}/bin:$PATH"
 export PATH=$PATH:/opt/intel/system_studio_2019/compilers_and_libraries_2019.3.206/linux/bin/intel64/
 %endif
-
-# cd /opt/flexran202103 && source ./set_env_var.sh -d ; cd -
-
+echo "before set_env_var%(pwd)"
+cd /opt/flexran202103 && source ./set_env_var.sh -d ; cd -
+echo "after set_env_var%(pwd)"
 ENABLED_DRIVERS=(
     bus/pci
     bus/vdev
@@ -259,12 +258,8 @@ for driver in drivers/*/*/; do
 done
 
 %meson --includedir=include/dpdk \
-       --default-library=shared \
-       -Ddisable_drivers="$disable_drivers" \
        -Ddrivers_install_subdir=dpdk-pmds \
        -Denable_docs=false \
-       -Dmax_ethports=32 \
-       -Dmax_numa_nodes=8 \
        -Dtests=false \
        -Dflexran_sdk=/opt/flexran202103/sdk/build-avx512-icc/install
 # %meson_build
