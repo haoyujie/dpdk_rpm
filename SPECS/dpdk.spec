@@ -1,3 +1,5 @@
+# add by haoyujie 2023-03-17
+%define _prefix /usr/local
 # Add option to build with examples
 %bcond_with examples
 # Add option to build without tools
@@ -256,7 +258,7 @@ for driver in drivers/*/*/; do
         disable_drivers="${disable_drivers:+$disable_drivers,}"$driver
 done
 
-# %meson --includedir=include/dpdk \
+%meson --includedir=include/dpdk \
        --default-library=shared \
        -Ddisable_drivers="$disable_drivers" \
        -Ddrivers_install_subdir=dpdk-pmds \
