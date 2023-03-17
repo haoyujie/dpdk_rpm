@@ -30,7 +30,7 @@ Source: http://fast.dpdk.org/rel/dpdk-%{ver}.tar.xz
 # Source1: https://github.com/ninja-build/ninja/archive/v%{ninjaver}.tar.gz#/ninja-build-%{ninjaver}.tar.gz
 # Source2: https://github.com/mesonbuild/meson/releases/download/%{mesonver}/meson-%{mesonver}.tar.gz
 %else
-#BuildRequires: meson
+# BuildRequires: meson
 %endif
 
 # Only needed for creating snapshot tarballs, not used in build itself
@@ -55,7 +55,8 @@ License: BSD and LGPLv2 and GPLv2
 ExclusiveArch: x86_64
 
 %define sdkdir  %{_datadir}/%{name}
-%define docdir  %{_docdir}/%{name}
+%define docdir  %{_docdir}/%{name}-%{ver}
+%define dondir  %{_docdir}
 %define incdir  %{_includedir}/%{name}
 %define pmddir  %{_libdir}/%{name}-pmds
 
@@ -110,7 +111,25 @@ BuildRequires: rdma-core-devel >= 15
 %define __meson_auto_features enabled
 
 %define meson \
-    meson x86_64-redhat-linux-gnu
+    %{__meson}                                    \\\
+        --buildtype=plain                         \\\
+        --prefix=%{_prefix}                       \\\
+        --libdir=%{_libdir}                       \\\
+        --libexecdir=%{_libexecdir}               \\\
+        --bindir=%{_bindir}                       \\\
+        --sbindir=%{_sbindir}                     \\\
+        --includedir=%{_includedir}               \\\
+        --datadir=%{_datadir}                     \\\
+        --mandir=%{_mandir}                       \\\
+        --infodir=%{_infodir}                     \\\
+        --localedir=%{_datadir}/locale            \\\
+        --sysconfdir=%{_sysconfdir}               \\\
+        --localstatedir=%{_localstatedir}         \\\
+        --sharedstatedir=%{_sharedstatedir}       \\\
+        --wrap-mode=%{__meson_wrap_mode}          \\\
+        --auto-features=%{__meson_auto_features}  \\\
+        %{_vpath_srcdir} %{_vpath_builddir}       \\\
+        %{nil}
 
 %define meson_build \
     %ninja_build -C %{_vpath_builddir}
@@ -155,15 +174,15 @@ Requires: kmod pciutils findutils iproute %{_py_exec}
 %{summary}
 %endif
 
-# %if %{with examples}
-# %package examples
-# Summary: Data Plane Development Kit example applications
-# BuildRequires: libvirt-devel
+%if %{with examples}
+%package examples
+Summary: Data Plane Development Kit example applications
+BuildRequires: libvirt-devel
 
-# %description examples
-# Example applications utilizing the Data Plane Development Kit, such
-# as L2 and L3 forwarding.
-# %endif
+%description examples
+Example applications utilizing the Data Plane Development Kit, such
+as L2 and L3 forwarding.
+%endif
 
 %prep
 # %if 0%{?rhel} && 0%{?rhel} < 8
@@ -174,6 +193,7 @@ Requires: kmod pciutils findutils iproute %{_py_exec}
 # %autopatch -p1
 
 %build
+
 %if 0%{?rhel} && 0%{?rhel} < 8
 # %{__python3} -m venv --clear %{venvdir}
 # pushd ninja-%{ninjaver}
@@ -221,12 +241,12 @@ ENABLED_DRIVERS+=(
 )
 %endif
 
-# %ifarch aarch64 x86_64
-# ENABLED_DRIVERS+=(
-#     net/e1000
-#     net/ixgbe
-# )
-# %endif
+%ifarch aarch64 x86_64
+ENABLED_DRIVERS+=(
+    net/e1000
+    net/ixgbe
+)
+%endif
 
 # Since upstream doesn't have a way
 for driver in drivers/*/*/; do
@@ -236,7 +256,7 @@ for driver in drivers/*/*/; do
         disable_drivers="${disable_drivers:+$disable_drivers,}"$driver
 done
 
-%meson --includedir=include/dpdk \
+# %meson --includedir=include/dpdk \
        --default-library=shared \
        -Ddisable_drivers="$disable_drivers" \
        -Ddrivers_install_subdir=dpdk-pmds \
@@ -245,7 +265,8 @@ done
        -Dmax_numa_nodes=8 \
        -Dtests=false \
        -Dflexran_sdk=/opt/flexran202103/sdk/build-avx512-icc/install
-%meson_build
+# %meson_build
+echo "===========finish build.==============="
 
 %install
 %if 0%{?rhel} && 0%{?rhel} < 8
@@ -255,7 +276,7 @@ export PATH="%{venvdir}/bin:$PATH"
 %meson_install
 
 # FIXME this file doesn't have chmod +x upstream
-# chmod +x %{buildroot}%{sdkdir}/examples/pipeline/examples/vxlan_table.py
+chmod +x %{buildroot}%{sdkdir}/examples/pipeline/examples/vxlan_table.py
 
 rm -f %{buildroot}%{_bindir}/dpdk-pdump
 rm -f %{buildroot}%{_bindir}/dpdk-proc-info
@@ -265,6 +286,7 @@ rm -f %{buildroot}%{_libdir}/*.a
 %files
 # BSD
 %doc README MAINTAINERS
+%{dondir}/%{name}/_static/css/custom.css
 %{_bindir}/dpdk-testpmd
 %dir %{pmddir}
 %{_libdir}/*.so.*
@@ -274,6 +296,7 @@ rm -f %{buildroot}%{_libdir}/*.a
 #BSD
 %exclude %{docdir}/README
 %exclude %{docdir}/MAINTAINERS
+%exclude %{dondir}/%{name}/_static/css/custom.css
 %{docdir}
 
 %files devel
@@ -283,18 +306,18 @@ rm -f %{buildroot}%{_libdir}/*.a
 %if %{with tools}
 %exclude %{_bindir}/dpdk-*.py
 %endif
-# %if %{with examples}
-# %exclude %{sdkdir}/examples/
-# %endif
+%if %{with examples}
+%exclude %{sdkdir}/examples/
+%endif
 %{_libdir}/*.so
 %{pmddir}/*.so
 %{_libdir}/pkgconfig/libdpdk.pc
 %{_libdir}/pkgconfig/libdpdk-libs.pc
-# %if %{with examples}
-# %files examples
-# %{_bindir}/dpdk-*
-# %doc %{sdkdir}/examples/
-# %endif
+%if %{with examples}
+%files examples
+%{_bindir}/dpdk-*
+%doc %{sdkdir}/examples/
+%endif
 
 %if %{with tools}
 %files tools
