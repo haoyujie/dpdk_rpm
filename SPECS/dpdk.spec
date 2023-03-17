@@ -60,7 +60,9 @@ ExclusiveArch: x86_64
 %define docdir  %{_docdir}/%{name}-%{ver}
 %define dondir  %{_docdir}
 %define incdir  %{_includedir}/%{name}
-%define pmddir  %{_libdir}/%{name}-pmds
+# %define pmddir  %{_libdir}/%{name}-pmds
+%define pmddir  %{_libdir}/%{name}/pmds-21.0
+%define _pkgconfigdir %{_datadir}/pkgconfig
 
 %define venvdir /usr
 
@@ -256,9 +258,9 @@ for driver in drivers/*/*/; do
     [[ " ${ENABLED_DRIVERS[@]} " == *" $driver "* ]] || \
         disable_drivers="${disable_drivers:+$disable_drivers,}"$driver
 done
-
+#dpdk-pmds
 %meson --includedir=include/dpdk \
-       -Ddrivers_install_subdir=dpdk-pmds \
+       -Ddrivers_install_subdir=dpdk/pmds-21.0 \
        -Denable_docs=false \
        -Dtests=false \
        -Dflexran_sdk=/opt/flexran202103/sdk/build-avx512-icc/install
@@ -280,6 +282,12 @@ rm -f %{buildroot}%{_bindir}/dpdk-proc-info
 rm -f %{buildroot}%{_bindir}/dpdk-test{,-acl,-bbdev,-cmdline,-compress-perf,-crypto-perf,-eventdev,-pipeline,-sad,-fib,-flow-perf,-regex}
 rm -f %{buildroot}%{_libdir}/*.a
 
+# create the pkgconfig directory if it doesn't exist
+mkdir -p %{buildroot}%{_pkgconfigdir}
+
+# copy libdpdk.pc to the pkgconfig directory
+cp %{buildroot}/usr/local/lib64/pkgconfig/*.pc %{buildroot}%{_pkgconfigdir}/
+
 %files
 # BSD
 %doc README MAINTAINERS
@@ -288,6 +296,7 @@ rm -f %{buildroot}%{_libdir}/*.a
 %dir %{pmddir}
 %{_libdir}/*.so.*
 %{pmddir}/*.so.*
+%{_pkgconfigdir}/*.pc
 
 %files doc
 #BSD
